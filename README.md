@@ -18,7 +18,7 @@ The platform combines smart parking management with predictive analytics to fore
 - 💳 Pay-After-Occupancy Billing.
 - 📡 Real-Time Occupancy Tracking
 - 🔥 Parking Occupancy Heat Maps
-- 🤖 AI Occupancy Forecasting
+- 🤖 AI Occupancy Forecasting.
 - 📈 Arrival Availability Prediction
 - 🎯 Smart Parking Recommendations
 - ⏱ Queue & Entry Time Prediction
