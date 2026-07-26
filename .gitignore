@@ -1,0 +1,32 @@
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+*.pyd
+env/
+venv/
+.venv/
+/.idea/
+.vscode/
+dist/
+build/
+*.egg-info/
+*.sqlite
+*.db
+.DS_Store
+*.log
+.env
+/.mypy_cache/
+
+# VS Code
+.vscode/
+
+# Python
+*.py[cod]
+*$py.class
+
+# PostgreSQL
+*.dump
+
+# Mac
+.DS_Store

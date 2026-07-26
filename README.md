@@ -31,34 +31,41 @@ The platform combines smart parking management with predictive analytics to fore
 ## 🛠 Tech Stack
 
 ### Frontend
+
 - React.js
 - HTML5
 - CSS3
 - JavaScript
 
 ### Backend
+
 - FastAPI (Python)
 
 ### Database
+
 - PostgreSQL
 - Firebase Firestore
 
 ### Real-Time Communication
+
 - Firebase Realtime Database
 - WebSockets
 
 ### Maps & Navigation
+
 - Leaflet.js
 - OpenStreetMap
 - Google Maps API
 
 ### AI & Machine Learning
+
 - Python
 - Pandas
 - NumPy
 - Scikit-learn
 
 ### Visualization
+
 - Chart.js
 - Recharts
 
@@ -85,12 +92,51 @@ By combining real-time parking operations with intelligent forecasting and recom
 
 ---
 
+## 📂 Project Structure
+
+```text
+ParkZenith/
+├── backend/
+│   ├── app/
+│   ├── tests/
+│   ├── requirements.txt
+│   └── .env.example
+├── docs/
+│   ├── architecture.md
+│   ├── api_design.md
+│   └── database_schema.md
+├── README.md
+└── .gitignore
+```
+
+---
+
 ## 📌 Status
 
-🚧 Under Development
+🚧 Phase 0 – Project Foundation & Architecture Setup
+
+Current Progress:
+
+- Project structure initialized
+- Backend architecture scaffolded
+- Database design documentation prepared
+- API design documentation prepared
+- AI module structure planned
 
 ---
 
 ## 👨‍💻 Developed As
 
-Final Year / Academic Smart City Project focusing on Real-Time Systems, Artificial Intelligence, Predictive Analytics, and Smart Mobility Solutions.
+Academic Smart City Project focusing on:
+
+- Smart Parking Management
+- Real-Time Systems
+- Artificial Intelligence
+- Predictive Analytics
+- Smart Mobility Solutions
+
+---
+
+## 📜 License
+
+This project is being developed for educational and research purposes.
