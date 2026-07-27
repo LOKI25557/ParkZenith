@@ -15,7 +15,7 @@ The platform combines smart parking management with predictive analytics to fore
 - 📅 Smart Slot Reservation
 - 🧭 Navigation to Parking Facilities
 - ✅ Check-In / Check-Out Management
-- 💳 Pay-After-Occupancy Billing
+- 💳 Pay-After-Occupancy Billing.
 - 📡 Real-Time Occupancy Tracking
 - 🔥 Parking Occupancy Heat Maps
 - 🤖 AI Occupancy Forecasting
