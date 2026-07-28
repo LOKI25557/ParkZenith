@@ -11,6 +11,8 @@ from ai_service.utils.backend_client import BackendAPIClient
 from ai_service.utils.dataset_exporter import DatasetExporter
 from ai_service.services.collector_service import CollectorService
 from ai_service.services.exporter_service import ExporterService
+from ai_service.services.analytics_service import AnalyticsService
+
 
 
 def get_backend_client() -> BackendAPIClient:
@@ -35,3 +37,11 @@ def get_exporter_service() -> ExporterService:
     """
     exporter = DatasetExporter()
     return ExporterService(exporter=exporter)
+
+
+def get_analytics_service() -> AnalyticsService:
+    """
+    Dependency provider for AnalyticsService instance.
+    """
+    return AnalyticsService()
+

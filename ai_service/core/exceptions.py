@@ -94,3 +94,58 @@ class DatabaseError(AIServiceBaseException):
             error_code="DATABASE_ERROR",
             details=details,
         )
+
+
+class EmptyDatasetError(AIServiceBaseException):
+    """
+    Raised when an analytics request has no historical records available.
+    """
+
+    def __init__(
+        self,
+        message: str = "No data found matching the specified parameters.",
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        super().__init__(
+            message=message,
+            status_code=404,
+            error_code="EMPTY_DATASET",
+            details=details,
+        )
+
+
+class MissingFacilityError(AIServiceBaseException):
+    """
+    Raised when a specified facility ID does not exist or has never been tracked.
+    """
+
+    def __init__(
+        self,
+        message: str = "The specified facility was not found.",
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        super().__init__(
+            message=message,
+            status_code=404,
+            error_code="MISSING_FACILITY",
+            details=details,
+        )
+
+
+class InvalidDateRangeError(AIServiceBaseException):
+    """
+    Raised when the provided date query parameters are invalid (e.g. end date before start date).
+    """
+
+    def __init__(
+        self,
+        message: str = "Invalid date range parameters.",
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        super().__init__(
+            message=message,
+            status_code=400,
+            error_code="INVALID_DATE_RANGE",
+            details=details,
+        )
+

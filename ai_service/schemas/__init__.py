@@ -19,6 +19,16 @@ from ai_service.schemas.collector import (
     CollectorStatusResponse,
     ExportSummaryResponse,
 )
+from ai_service.schemas.analytics import (
+    OverviewResponse,
+    OccupancyAnalyticsResponse,
+    UtilizationAnalyticsResponse,
+    ReservationAnalyticsResponse,
+    SessionAnalyticsResponse,
+    PeakHoursResponse,
+    TrendsResponse,
+    ReportResponse,
+)
 
 __all__ = [
     "OccupancyHistoryCreate",
@@ -30,4 +40,13 @@ __all__ = [
     "CollectionSummary",
     "CollectorStatusResponse",
     "ExportSummaryResponse",
+    "OverviewResponse",
+    "OccupancyAnalyticsResponse",
+    "UtilizationAnalyticsResponse",
+    "ReservationAnalyticsResponse",
+    "SessionAnalyticsResponse",
+    "PeakHoursResponse",
+    "TrendsResponse",
+    "ReportResponse",
 ]
+
