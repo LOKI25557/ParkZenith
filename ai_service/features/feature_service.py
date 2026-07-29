@@ -126,12 +126,16 @@ class FeatureService:
         # Left merge occupancy (our base timeline) with reservation and session metrics
         merged_df = occ_hourly.copy()
         
+        # Temp column to align sub-hourly intervals to their hourly parent
+        merged_df["hour_timestamp"] = merged_df["timestamp"].dt.floor("h")
+        
         # Merge Reservations
         if not res_hourly.empty:
+            res_temp = res_hourly.rename(columns={"timestamp": "hour_timestamp"})
             merged_df = pd.merge(
                 merged_df,
-                res_hourly,
-                on=["facility_id", "timestamp"],
+                res_temp,
+                on=["facility_id", "hour_timestamp"],
                 how="left"
             )
             # Fill missing reservation counts/metrics with 0
@@ -140,17 +144,21 @@ class FeatureService:
 
         # Merge Sessions
         if not sess_hourly.empty:
+            sess_temp = sess_hourly.rename(columns={"timestamp": "hour_timestamp"})
             merged_df = pd.merge(
                 merged_df,
-                sess_hourly,
-                on=["facility_id", "timestamp"],
+                sess_temp,
+                on=["facility_id", "hour_timestamp"],
                 how="left"
             )
             # Fill missing session counts/metrics with 0
             sess_cols = [c for c in sess_hourly.columns if c not in ["facility_id", "timestamp"]]
             merged_df[sess_cols] = merged_df[sess_cols].fillna(0.0)
 
-        # 5. Generate time features on the merged hourly timeline
+        # Drop temporary merging column
+        merged_df = merged_df.drop(columns=["hour_timestamp"])
+
+        # 5. Generate time features on the merged timeline
         group_cols = ["facility_id"]
         if "_zone_filled" in merged_df.columns:
             group_cols.append("_zone_filled")

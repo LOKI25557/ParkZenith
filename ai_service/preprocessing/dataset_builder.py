@@ -116,7 +116,12 @@ class DatasetBuilder:
         )
         return occ_df, res_df, sess_df
 
-    async def build_and_export_datasets(self, session: AsyncSession, export_path: Optional[str] = None) -> Dict[str, Any]:
+    async def build_and_export_datasets(
+        self,
+        session: AsyncSession,
+        export_path: Optional[str] = None,
+        resample_freq: str = "15min"
+    ) -> Dict[str, Any]:
         """
         Coordinates the whole load, clean, transform, and export cycle.
         """
@@ -134,7 +139,8 @@ class DatasetBuilder:
         occ_train, res_train, sess_train, forecast_train, pipeline_metrics = self.pipeline.run(
             raw_occupancy=raw_occ,
             raw_reservation=raw_res,
-            raw_session=raw_sess
+            raw_session=raw_sess,
+            resample_freq=resample_freq
         )
 
         # Define file paths

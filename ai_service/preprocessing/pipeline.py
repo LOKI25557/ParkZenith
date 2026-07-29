@@ -109,6 +109,7 @@ class PreprocessingPipeline:
         raw_occupancy: pd.DataFrame,
         raw_reservation: pd.DataFrame,
         raw_session: pd.DataFrame,
+        resample_freq: str = "15min",
     ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, Dict[str, Any]]:
         """
         Executes the full pipeline:
@@ -116,7 +117,7 @@ class PreprocessingPipeline:
         Returns:
           (occupancy_training, reservation_training, session_training, forecast_training, pipeline_metrics)
         """
-        logger.info("Executing preprocessing pipeline...")
+        logger.info("Executing preprocessing pipeline with resample_freq=%s...", resample_freq)
         metrics = {
             "raw_records": {
                 "occupancy": len(raw_occupancy),
@@ -154,6 +155,7 @@ class PreprocessingPipeline:
             occupancy_df=clean_occ,
             reservation_df=clean_res,
             session_df=clean_sess,
+            resample_freq=resample_freq,
         )
 
         # 4. NORMALIZATION & ENCODING
