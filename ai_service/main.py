@@ -16,6 +16,7 @@ from ai_service.database.session import init_db
 from ai_service.scheduler.scheduler import collection_scheduler
 from ai_service.api.routes import router as collector_router
 from ai_service.api.analytics_routes import router as analytics_router
+from ai_service.api.preprocessing_routes import router as preprocessing_router
 
 
 # Initialize structured logging
@@ -76,6 +77,7 @@ register_exception_handlers(app)
 # Include API Routers
 app.include_router(collector_router)
 app.include_router(analytics_router)
+app.include_router(preprocessing_router)
 
 
 
