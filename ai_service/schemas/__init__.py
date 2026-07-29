@@ -30,6 +30,14 @@ from ai_service.schemas.analytics import (
     ReportResponse,
 )
 
+from ai_service.schemas.preprocessing import (
+    PipelineStatusResponse,
+    PipelineRunResponse,
+    FeaturesSummaryResponse,
+    DatasetExportResponse,
+    DatasetInfoResponse,
+)
+
 __all__ = [
     "OccupancyHistoryCreate",
     "OccupancyHistoryResponse",
@@ -48,5 +56,10 @@ __all__ = [
     "PeakHoursResponse",
     "TrendsResponse",
     "ReportResponse",
+    "PipelineStatusResponse",
+    "PipelineRunResponse",
+    "FeaturesSummaryResponse",
+    "DatasetExportResponse",
+    "DatasetInfoResponse",
 ]
 
