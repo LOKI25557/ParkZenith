@@ -13,6 +13,7 @@ from ai_service.services.collector_service import CollectorService
 from ai_service.services.exporter_service import ExporterService
 from ai_service.services.analytics_service import AnalyticsService
 from ai_service.services.preprocessing_service import PreprocessingService
+from ai_service.services.forecasting_service import ForecastingService
 
 
 
@@ -51,4 +52,11 @@ def get_preprocessing_service() -> PreprocessingService:
     Dependency provider for PreprocessingService instance.
     """
     return PreprocessingService()
+
+
+def get_forecasting_service() -> ForecastingService:
+    """
+    Dependency provider for ForecastingService instance.
+    """
+    return ForecastingService()
 
