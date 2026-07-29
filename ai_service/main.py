@@ -17,6 +17,7 @@ from ai_service.scheduler.scheduler import collection_scheduler
 from ai_service.api.routes import router as collector_router
 from ai_service.api.analytics_routes import router as analytics_router
 from ai_service.api.preprocessing_routes import router as preprocessing_router
+from ai_service.api.forecasting_routes import router as forecasting_router
 
 
 # Initialize structured logging
@@ -78,6 +79,7 @@ register_exception_handlers(app)
 app.include_router(collector_router)
 app.include_router(analytics_router)
 app.include_router(preprocessing_router)
+app.include_router(forecasting_router)
 
 
 
