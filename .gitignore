@@ -30,3 +30,4 @@ build/
 
 # Mac
 .DS_Store
+ai_service.db
