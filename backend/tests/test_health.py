@@ -1,12 +1,12 @@
-import pytest
-from httpx import AsyncClient
+import unittest
+from httpx import AsyncClient, ASGITransport
+from backend.app.main import app
 
 
-@pytest.mark.asyncio
-async def test_health_endpoint():
-    from backend.app.main import app
+class TestHealthEndpoint(unittest.IsolatedAsyncioTestCase):
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
-        resp = await ac.get("/")
-        assert resp.status_code == 200
-        assert resp.json().get("message") == "ParkZenith API Running"
+    async def test_health_endpoint(self):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            resp = await ac.get("/")
+            self.assertEqual(resp.status_code, 200)
+            self.assertEqual(resp.json().get("message"), "ParkZenith API Running")

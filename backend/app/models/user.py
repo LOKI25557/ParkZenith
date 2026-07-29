@@ -9,7 +9,18 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
     full_name = Column(String(255), nullable=True)
-    hashed_password = Column(String(512), nullable=False)
+    phone = Column(String(32), nullable=True)
+    vehicle_number = Column(String(32), nullable=True)
+    password_hash = Column(String(512), nullable=False)
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    @property
+    def hashed_password(self) -> str:
+        return self.password_hash
+
+    @hashed_password.setter
+    def hashed_password(self, value: str) -> None:
+        self.password_hash = value
