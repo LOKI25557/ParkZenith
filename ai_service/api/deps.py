@@ -14,6 +14,7 @@ from ai_service.services.exporter_service import ExporterService
 from ai_service.services.analytics_service import AnalyticsService
 from ai_service.services.preprocessing_service import PreprocessingService
 from ai_service.services.forecasting_service import ForecastingService
+from ai_service.services.availability_service import AvailabilityService
 
 
 
@@ -59,4 +60,11 @@ def get_forecasting_service() -> ForecastingService:
     Dependency provider for ForecastingService instance.
     """
     return ForecastingService()
+
+
+def get_availability_service() -> AvailabilityService:
+    """
+    Dependency provider for AvailabilityService instance.
+    """
+    return AvailabilityService()
 
