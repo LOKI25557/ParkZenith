@@ -1,0 +1,3 @@
+id,reservation_id,facility_id,slot_id,reservation_start,reservation_end,duration_minutes,collected_at,lead_time_minutes,is_cancelled,is_completed,is_active,start_hour,start_dayofweek,time_hour,time_dayofweek,time_week,time_month,time_quarter,time_is_weekend,time_is_business_hour,time_is_peak_hour,time_is_holiday,time_since_last_update,reservation_status_CONFIRMED
+2,RES-AV-OUT,1,SLOT-A2,2026-07-30 05:06:47.823080+00:00,2026-07-30 05:36:47.823080+00:00,0.0,2026-07-30 05:21:47.823080+00:00,-1.0,0,0,0,5,3,5,3,31,7,3,0,0,0,0,-1800.0,1.0
+1,RES-AV-IN,1,SLOT-A1,2026-07-30 05:36:47.823080+00:00,2026-07-30 06:06:47.823080+00:00,0.0,2026-07-30 05:21:47.823080+00:00,1.0,0,0,0,5,3,5,3,31,7,3,0,0,0,0,0.0,1.0
