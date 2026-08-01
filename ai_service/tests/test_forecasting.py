@@ -41,9 +41,6 @@ async def override_get_db_session():
         yield session
 
 
-app.dependency_overrides[get_db_session] = override_get_db_session
-
-
 class TestOccupancyForecasting(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self) -> None:
@@ -52,11 +49,13 @@ class TestOccupancyForecasting(unittest.IsolatedAsyncioTestCase):
         self.test_dir = "./test_forecasting_dir"
         self.model_file = os.path.join(self.test_dir, "occupancy_forecast_test.joblib")
         os.makedirs(self.test_dir, exist_ok=True)
+        app.dependency_overrides[get_db_session] = override_get_db_session
 
     async def asyncTearDown(self) -> None:
         async with engine_test.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
         await engine_test.dispose()
+        app.dependency_overrides.clear()
         if os.path.exists(self.test_dir):
             shutil.rmtree(self.test_dir)
 
@@ -156,7 +155,11 @@ class TestOccupancyForecasting(unittest.IsolatedAsyncioTestCase):
         forecaster = OccupancyForecaster(model_path=self.model_file)
         
         # Temporarily inject this forecaster instance into the forecasting_service
-        from ai_service.services.forecasting_service import forecasting_service
+        from ai_service.services.forecasting_service import forecasting_service, ForecastingService
+        from ai_service.api.deps import get_forecasting_service
+        
+        test_service = ForecastingService(forecaster=forecaster)
+        app.dependency_overrides[get_forecasting_service] = lambda: test_service
         original_forecaster = forecasting_service.forecaster
         forecasting_service.forecaster = forecaster
 
@@ -209,3 +212,5 @@ class TestOccupancyForecasting(unittest.IsolatedAsyncioTestCase):
 
         finally:
             forecasting_service.forecaster = original_forecaster
+            if get_forecasting_service in app.dependency_overrides:
+                del app.dependency_overrides[get_forecasting_service]
