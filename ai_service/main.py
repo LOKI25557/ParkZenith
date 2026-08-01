@@ -20,6 +20,7 @@ from ai_service.api.preprocessing_routes import router as preprocessing_router
 from ai_service.api.forecasting_routes import router as forecasting_router
 from ai_service.api.availability_routes import router as availability_router
 from ai_service.api.recommendation_routes import router as recommendation_router
+from ai_service.api.queue_routes import router as queue_router
 
 
 # Initialize structured logging
@@ -84,6 +85,7 @@ app.include_router(preprocessing_router)
 app.include_router(forecasting_router)
 app.include_router(availability_router)
 app.include_router(recommendation_router)
+app.include_router(queue_router)
 
 
 
