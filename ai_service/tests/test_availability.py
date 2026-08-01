@@ -50,20 +50,18 @@ async def override_get_db_session():
         yield session
 
 
-# Setup dependency override
-app.dependency_overrides[get_db_session] = override_get_db_session
-
-
 class TestArrivalAvailability(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self) -> None:
         async with engine_test.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+        app.dependency_overrides[get_db_session] = override_get_db_session
 
     async def asyncTearDown(self) -> None:
         async with engine_test.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
         await engine_test.dispose()
+        app.dependency_overrides.clear()
 
     def test_calculator_functions(self) -> None:
         """Tests individual calculators for free slots, probability, risk, and reliability."""
