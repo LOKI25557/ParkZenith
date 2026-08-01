@@ -13,7 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai_service.main import app
 from ai_service.config.settings import settings
-from ai_service.database.session import engine, AsyncSessionFactory
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.pool import StaticPool
+from ai_service.database.session import get_db_session
 from ai_service.database.base import Base
 from ai_service.models.occupancy import OccupancyHistory
 from ai_service.models.reservation import ReservationHistory
@@ -51,6 +53,26 @@ from ai_service.preprocessing.pipeline import PreprocessingPipeline
 from ai_service.preprocessing.dataset_builder import DatasetBuilder
 
 
+# Setup test DB URL
+DATABASE_URL_TEST = "sqlite+aiosqlite:///:memory:"
+
+engine_test = create_async_engine(
+    DATABASE_URL_TEST,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+
+AsyncSessionLocalTest = async_sessionmaker(
+    bind=engine_test,
+    expire_on_commit=False,
+    class_=AsyncSession,
+)
+
+async def override_get_db_session():
+    async with AsyncSessionLocalTest() as session:
+        yield session
+
+
 class TestPreprocessingPipeline(unittest.IsolatedAsyncioTestCase):
     """
     Test suite verifying cleaning, normalization, encoding, feature engineering, and route logic.
@@ -58,20 +80,20 @@ class TestPreprocessingPipeline(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self) -> None:
         """Sets up tables and sample records."""
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.drop_all)
+        async with engine_test.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+        app.dependency_overrides[get_db_session] = override_get_db_session
 
         self.test_dir = "./test_run_datasets"
         if os.path.exists(self.test_dir):
             shutil.rmtree(self.test_dir, ignore_errors=True)
         os.makedirs(self.test_dir, exist_ok=True)
 
-        self.now = datetime.now(timezone.utc)
+        self.now = datetime.now(timezone.utc).replace(minute=45, second=0, microsecond=0)
         self.facility_id = "FAC-PREP-001"
 
         # Populate DB tables with basic cleanable records
-        async with AsyncSessionFactory() as session:
+        async with AsyncSessionLocalTest() as session:
             # 1. Occupancy records
             occ_list = [
                 OccupancyHistory(
@@ -159,8 +181,10 @@ class TestPreprocessingPipeline(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self) -> None:
         """Removes tables and test directories."""
-        async with engine.begin() as conn:
+        async with engine_test.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
+        await engine_test.dispose()
+        app.dependency_overrides.clear()
         
         if os.path.exists(self.test_dir):
             shutil.rmtree(self.test_dir, ignore_errors=True)
@@ -304,7 +328,7 @@ class TestPreprocessingPipeline(unittest.IsolatedAsyncioTestCase):
 
     async def test_05_builder_and_service(self):
         """Verifies end-to-end dataset builder execution and exports."""
-        async with AsyncSessionFactory() as session:
+        async with AsyncSessionLocalTest() as session:
             builder = DatasetBuilder(export_dir=self.test_dir)
             results = await builder.build_and_export_datasets(session)
 
