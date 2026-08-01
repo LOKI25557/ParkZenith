@@ -14,6 +14,7 @@ from ai_service.models.occupancy import OccupancyHistory
 from ai_service.services.forecasting_service import ForecastingService
 from ai_service.services.availability_service import AvailabilityService
 from ai_service.services.analytics_service import AnalyticsService
+from ai_service.services.queue_service import QueueService
 
 from ai_service.recommendation.weights import WeightConfiguration, get_facility_metadata
 from ai_service.recommendation.recommendation_engine import RecommendationEngine
@@ -36,12 +37,14 @@ class RecommendationService:
         forecasting_service: Optional[ForecastingService] = None,
         availability_service: Optional[AvailabilityService] = None,
         analytics_service: Optional[AnalyticsService] = None,
+        queue_service: Optional[QueueService] = None,
     ) -> None:
         self.forecasting_service = forecasting_service or ForecastingService()
         self.availability_service = availability_service or AvailabilityService(
             forecasting_service=self.forecasting_service
         )
         self.analytics_service = analytics_service or AnalyticsService()
+        self.queue_service = queue_service or QueueService()
 
     async def get_status(self) -> Dict[str, Any]:
         """
@@ -217,6 +220,14 @@ class RecommendationService:
             except Exception as e:
                 logger.warning("Failed to fetch analytics utilization for facility %s: %s. Using default.", fid, str(e))
 
+            # Fetch queue prediction
+            queue_wait_minutes = fac.get("queue_wait_minutes") or 0.0
+            try:
+                queue_pred = await self.queue_service.get_queue_prediction(db, fid, eta_minutes)
+                queue_wait_minutes = queue_pred.get("expected_wait_minutes") or 0.0
+            except Exception as e:
+                logger.warning("Failed to fetch queue prediction for facility %s: %s. Using fallback.", fid, str(e))
+
             # Merge predictions into facility metadata copy
             enriched_fac = fac.copy()
             enriched_fac.update({
@@ -226,6 +237,7 @@ class RecommendationService:
                 "occupancy_risk": avail_pred.get("occupancy_risk"),
                 "confidence": avail_pred.get("confidence"),
                 "historical_utilization": historical_util,
+                "queue_wait_minutes": queue_wait_minutes,
             })
             return enriched_fac
 
@@ -304,6 +316,14 @@ class RecommendationService:
         except Exception as e:
             logger.warning("Failed to fetch analytics utilization for facility %s: %s.", fid, str(e))
 
+        # Fetch queue prediction
+        queue_wait_minutes = fac_item.get("queue_wait_minutes") or 0.0
+        try:
+            queue_pred = await self.queue_service.get_queue_prediction(db, fid, eta_minutes)
+            queue_wait_minutes = queue_pred.get("expected_wait_minutes") or 0.0
+        except Exception as e:
+            logger.warning("Failed to fetch queue prediction for facility %s: %s. Using fallback.", fid, str(e))
+
         # Enrich
         fac_item.update({
             "availability_probability": avail_pred.get("availability_probability"),
@@ -313,6 +333,7 @@ class RecommendationService:
             "confidence": avail_pred.get("confidence"),
             "historical_utilization": historical_util,
             "distance_km": round(calculate_distance_km(user_latitude, user_longitude, fac_item["latitude"], fac_item["longitude"]), 2),
+            "queue_wait_minutes": queue_wait_minutes,
         })
 
         if destination_latitude is not None and destination_longitude is not None:
