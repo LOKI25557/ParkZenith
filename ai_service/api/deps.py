@@ -16,6 +16,7 @@ from ai_service.services.preprocessing_service import PreprocessingService
 from ai_service.services.forecasting_service import ForecastingService
 from ai_service.services.availability_service import AvailabilityService
 from ai_service.services.recommendation_service import RecommendationService
+from ai_service.services.queue_service import QueueService
 
 
 
@@ -70,10 +71,18 @@ def get_availability_service() -> AvailabilityService:
     return AvailabilityService()
 
 
+def get_queue_service() -> QueueService:
+    """
+    Dependency provider for QueueService instance.
+    """
+    return QueueService()
+
+
 def get_recommendation_service(
     forecasting_service: ForecastingService = Depends(get_forecasting_service),
     availability_service: AvailabilityService = Depends(get_availability_service),
     analytics_service: AnalyticsService = Depends(get_analytics_service),
+    queue_service: QueueService = Depends(get_queue_service),
 ) -> RecommendationService:
     """
     Dependency provider for RecommendationService instance.
@@ -82,5 +91,7 @@ def get_recommendation_service(
         forecasting_service=forecasting_service,
         availability_service=availability_service,
         analytics_service=analytics_service,
+        queue_service=queue_service,
     )
+
 
