@@ -11,8 +11,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai_service.main import app
 from ai_service.config.settings import settings
-from ai_service.database.session import engine, AsyncSessionFactory
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.pool import StaticPool
+from ai_service.database.session import get_db_session
 from ai_service.database.base import Base
+
+# Setup test DB URL
+DATABASE_URL_TEST = "sqlite+aiosqlite:///:memory:"
+
+engine_test = create_async_engine(
+    DATABASE_URL_TEST,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+
+AsyncSessionLocalTest = async_sessionmaker(
+    bind=engine_test,
+    expire_on_commit=False,
+    class_=AsyncSession,
+)
+
+async def override_get_db_session():
+    async with AsyncSessionLocalTest() as session:
+        yield session
 
 from ai_service.models.occupancy import OccupancyHistory
 from ai_service.models.reservation import ReservationHistory
@@ -37,9 +58,9 @@ class TestAnalyticsEngine(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self) -> None:
         """Sets up database tables and initializes common test data."""
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.drop_all)
+        async with engine_test.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+        app.dependency_overrides[get_db_session] = override_get_db_session
 
         self.now = datetime.now(timezone.utc)
         self.facility_id = "FAC-TEST-001"
@@ -126,12 +147,14 @@ class TestAnalyticsEngine(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self) -> None:
         """Tears down database tables."""
-        async with engine.begin() as conn:
+        async with engine_test.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
+        await engine_test.dispose()
+        app.dependency_overrides.clear()
 
     async def _insert_test_data(self) -> None:
         """Inserts the test data into the database."""
-        async with AsyncSessionFactory() as session:
+        async with AsyncSessionLocalTest() as session:
             session.add_all(self.occupancy_data)
             session.add_all(self.reservation_data)
             session.add_all(self.session_data)
