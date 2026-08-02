@@ -3,7 +3,7 @@ Pydantic schemas for Queue Prediction & Congestion Intelligence.
 """
 
 from datetime import datetime
-from typing import Union, Literal
+from typing import Union, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -83,3 +83,45 @@ class QueuePredictionResponse(BaseModel):
         if not (0.0 <= v <= 100.0):
             raise ValueError("Confidence must be between 0 and 100")
         return v
+
+
+class QueueJoinRequest(BaseModel):
+    """
+    Schema for joining a virtual queue.
+    """
+    user_id: str = Field(..., min_length=1, description="Unique identifier for the user / driver.")
+
+
+class QueueJoinResponse(BaseModel):
+    """
+    Response schema after joining a virtual queue.
+    """
+    facility_id: str = Field(..., description="Unique identifier of the parking facility.")
+    user_id: str = Field(..., description="Unique identifier for the user.")
+    position: int = Field(..., ge=1, description="Assigned queue position (1-based).")
+
+
+class QueueLeaveRequest(BaseModel):
+    """
+    Schema for leaving or dequeuing from a virtual queue.
+    """
+    user_id: Optional[str] = Field(default=None, description="Optional user ID to dequeue. If omitted, the front of the queue is popped.")
+
+
+class QueueLeaveResponse(BaseModel):
+    """
+    Response schema after leaving or dequeuing from a virtual queue.
+    """
+    facility_id: str = Field(..., description="Unique identifier of the parking facility.")
+    user_id: Optional[str] = Field(default=None, description="The user ID that was dequeued (None if queue was empty).")
+    success: bool = Field(..., description="True if a user was successfully dequeued.")
+
+
+class QueuePositionResponse(BaseModel):
+    """
+    Response schema for checking current queue position.
+    """
+    facility_id: str = Field(..., description="Unique identifier of the parking facility.")
+    user_id: str = Field(..., description="Unique identifier for the user.")
+    position: Optional[int] = Field(default=None, description="Current queue position (1-based), or None if not enqueued.")
+
