@@ -20,11 +20,28 @@ from ai_service.services.queue_service import QueueService
 
 
 
+# Shared Singletons
+_backend_client = BackendAPIClient()
+_collector_service = CollectorService(backend_client=_backend_client)
+_exporter_service = ExporterService(exporter=DatasetExporter())
+_analytics_service = AnalyticsService()
+_preprocessing_service = PreprocessingService()
+_forecasting_service = ForecastingService()
+_availability_service = AvailabilityService(forecasting_service=_forecasting_service)
+_queue_service = QueueService()
+_recommendation_service = RecommendationService(
+    forecasting_service=_forecasting_service,
+    availability_service=_availability_service,
+    analytics_service=_analytics_service,
+    queue_service=_queue_service,
+)
+
+
 def get_backend_client() -> BackendAPIClient:
     """
     Dependency provider for BackendAPIClient instance.
     """
-    return BackendAPIClient()
+    return _backend_client
 
 
 def get_collector_service(
@@ -33,65 +50,56 @@ def get_collector_service(
     """
     Dependency provider for CollectorService instance.
     """
-    return CollectorService(backend_client=backend_client)
+    return _collector_service
 
 
 def get_exporter_service() -> ExporterService:
     """
     Dependency provider for ExporterService instance.
     """
-    exporter = DatasetExporter()
-    return ExporterService(exporter=exporter)
+    return _exporter_service
+
 
 def get_analytics_service() -> AnalyticsService:
     """
     Dependency provider for AnalyticsService instance.
     """
-    return AnalyticsService()
+    return _analytics_service
 
 
 def get_preprocessing_service() -> PreprocessingService:
     """
     Dependency provider for PreprocessingService instance.
     """
-    return PreprocessingService()
+    return _preprocessing_service
 
 
 def get_forecasting_service() -> ForecastingService:
     """
     Dependency provider for ForecastingService instance.
     """
-    return ForecastingService()
+    return _forecasting_service
 
 
 def get_availability_service() -> AvailabilityService:
     """
     Dependency provider for AvailabilityService instance.
     """
-    return AvailabilityService()
+    return _availability_service
 
 
 def get_queue_service() -> QueueService:
     """
     Dependency provider for QueueService instance.
     """
-    return QueueService()
+    return _queue_service
 
 
-def get_recommendation_service(
-    forecasting_service: ForecastingService = Depends(get_forecasting_service),
-    availability_service: AvailabilityService = Depends(get_availability_service),
-    analytics_service: AnalyticsService = Depends(get_analytics_service),
-    queue_service: QueueService = Depends(get_queue_service),
-) -> RecommendationService:
+def get_recommendation_service() -> RecommendationService:
     """
     Dependency provider for RecommendationService instance.
     """
-    return RecommendationService(
-        forecasting_service=forecasting_service,
-        availability_service=availability_service,
-        analytics_service=analytics_service,
-        queue_service=queue_service,
-    )
+    return _recommendation_service
+
 
 
