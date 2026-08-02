@@ -31,6 +31,8 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=exc.status_code,
             content={
+                "success": False,
+                "detail": exc.message,
                 "error": {
                     "code": exc.error_code,
                     "message": exc.message,
@@ -52,6 +54,8 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=500,
             content={
+                "success": False,
+                "detail": "An unexpected internal error occurred.",
                 "error": {
                     "code": "INTERNAL_SERVER_ERROR",
                     "message": "An unexpected internal error occurred.",
@@ -60,3 +64,4 @@ def register_exception_handlers(app: FastAPI) -> None:
                 }
             },
         )
+
