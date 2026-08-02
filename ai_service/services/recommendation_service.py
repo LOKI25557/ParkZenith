@@ -9,7 +9,7 @@ from typing import Dict, Any, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
-from ai_service.core.exceptions import DatabaseError
+from ai_service.core.exceptions import DatabaseError, ModelUnavailableError
 from ai_service.models.occupancy import OccupancyHistory
 from ai_service.services.forecasting_service import ForecastingService
 from ai_service.services.availability_service import AvailabilityService
@@ -96,6 +96,14 @@ class RecommendationService:
             max_distance_km,
             preferred_facility,
         )
+
+        # Ensure forecasting models are ready
+        if not self.forecasting_service.forecaster.is_loaded:
+            if not self.forecasting_service.forecaster.load():
+                raise ModelUnavailableError(
+                    "Forecasting models are not trained. Smart Recommendations require trained models."
+                )
+
 
         # 1. Fetch all distinct facility IDs from OccupancyHistory table to find active candidate keys
         try:
