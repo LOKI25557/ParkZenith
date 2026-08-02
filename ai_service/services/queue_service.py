@@ -15,6 +15,7 @@ from ai_service.models.occupancy import OccupancyHistory
 from ai_service.models.reservation import ReservationHistory
 from ai_service.models.session import ParkingSessionHistory
 from ai_service.queue.queue_engine import QueueEngine
+from ai_service.queue.manager import VirtualQueueManager
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,32 @@ class QueueService:
 
     def __init__(self, queue_engine: Optional[QueueEngine] = None) -> None:
         self.queue_engine = queue_engine or QueueEngine()
+        self.virtual_queue_manager = VirtualQueueManager()
+
+    async def enqueue_user(self, db: AsyncSession, facility_id: str, user_id: str) -> int:
+        """
+        Enqueues a user in the facility virtual queue.
+        """
+        return await self.virtual_queue_manager.enqueue(db, facility_id, user_id)
+
+    async def dequeue_user(self, db: AsyncSession, facility_id: str, user_id: Optional[str] = None) -> Optional[str]:
+        """
+        Dequeues a user from the facility virtual queue.
+        """
+        return await self.virtual_queue_manager.dequeue(db, facility_id, user_id)
+
+    async def cancel_user(self, db: AsyncSession, facility_id: str, user_id: str) -> bool:
+        """
+        Cancels a user's position in the queue.
+        """
+        return await self.virtual_queue_manager.cancel(db, facility_id, user_id)
+
+    async def get_user_position(self, db: AsyncSession, facility_id: str, user_id: str) -> Optional[int]:
+        """
+        Looks up a user's current queue position.
+        """
+        return await self.virtual_queue_manager.get_position(db, facility_id, user_id)
+
 
     async def _validate_facility(self, db: AsyncSession, facility_id: str) -> None:
         """

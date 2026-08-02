@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi import HTTPException, status
 
+from ..core.exceptions import ModelUnavailableError, InsufficientDataError, MissingFacilityError
 from ..ml.forecasting import OccupancyForecaster
 from ..models.occupancy import OccupancyHistory
 from ..models.reservation import ReservationHistory
@@ -44,10 +45,7 @@ class ForecastingService:
         Returns metrics for the trained forecasting models.
         """
         if not self.forecaster.is_loaded:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Forecasting models have not been trained or loaded yet."
-            )
+            raise ModelUnavailableError("Forecasting models have not been trained or loaded yet.")
         return {
             "best_models": self.forecaster.get_best_model_names(),
             "metrics": self.forecaster.get_metrics()
@@ -97,10 +95,7 @@ class ForecastingService:
         sess_records = sess_res.scalars().all()
 
         if not occ_records:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"No occupancy logs found for facility_id: {facility_id}. Cannot compile features."
-            )
+            raise MissingFacilityError(f"No occupancy logs found for facility_id: {facility_id}. Cannot compile features.")
 
         # Map to dataframes
         occ_data = [
@@ -171,10 +166,7 @@ class ForecastingService:
         )
 
         if len(forecast_features) == 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to generate consolidated forecasting features. Too few data points."
-            )
+            raise InsufficientDataError("Failed to generate consolidated forecasting features. Too few data points.")
 
         # Take the most recent feature vector
         latest_features_df = forecast_features.tail(1)
@@ -193,10 +185,7 @@ class ForecastingService:
         if not self.forecaster.is_loaded:
             # Try to load, if not trained raise error
             if not self.forecaster.load():
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Forecasting models are not trained. Please train the model first."
-                )
+                raise ModelUnavailableError("Forecasting models are not trained. Please train the model first.")
 
         features_df, current_occ = await self._fetch_and_prepare_latest_features(db, facility_id)
 

@@ -6,7 +6,7 @@ Phase 1: Data Collection Pipeline
 from contextlib import asynccontextmanager
 import logging
 from typing import AsyncGenerator, Dict, Any
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from ai_service.config.settings import settings
@@ -100,6 +100,46 @@ async def health_check() -> Dict[str, Any]:
         "version": settings.APP_VERSION,
         "environment": settings.ENVIRONMENT,
         "scheduler": collection_scheduler.status,
+    }
+
+
+@app.get("/ready", tags=["Health Check"])
+async def readiness_check(response: Response) -> Dict[str, Any]:
+    """
+    Readiness check endpoint. Verifies database connectivity and ML model loading.
+    """
+    db_connected = False
+    models_ready = False
+
+    # 1. Database Check
+    try:
+        from sqlalchemy import text
+        from ai_service.database.session import AsyncSessionFactory
+        async with AsyncSessionFactory() as session:
+            await session.execute(text("SELECT 1"))
+        db_connected = True
+    except Exception as exc:
+        logger.error("Readiness probe database connection failure: %s", str(exc))
+
+    # 2. Model Availability Check
+    try:
+        from ai_service.api.deps import get_forecasting_service
+        forecasting = get_forecasting_service()
+        models_ready = forecasting.forecaster.is_loaded
+    except Exception as exc:
+        logger.error("Readiness probe model check failure: %s", str(exc))
+
+    status_str = "READY" if (db_connected and models_ready) else "DEGRADED"
+
+    # If not ready, return 503 Service Unavailable
+    if status_str != "READY":
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
+    return {
+        "status": status_str,
+        "database_connected": db_connected,
+        "models_ready": models_ready,
+        "scheduler_status": collection_scheduler.status,
     }
 
 

@@ -149,3 +149,40 @@ class InvalidDateRangeError(AIServiceBaseException):
             details=details,
         )
 
+
+class ModelUnavailableError(AIServiceBaseException):
+    """
+    Raised when an ML model is not trained, missing, corrupted, or incompatible.
+    """
+
+    def __init__(
+        self,
+        message: str = "Forecasting model is currently unavailable or not trained.",
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        super().__init__(
+            message=message,
+            status_code=404,
+            error_code="MODEL_UNAVAILABLE",
+            details=details,
+        )
+
+
+class InsufficientDataError(AIServiceBaseException):
+    """
+    Raised when there is not enough historical data/logs to train models or calculate predictions.
+    """
+
+    def __init__(
+        self,
+        message: str = "Insufficient historical data available for operation.",
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        super().__init__(
+            message=message,
+            status_code=400,
+            error_code="INSUFFICIENT_DATA",
+            details=details,
+        )
+
+
