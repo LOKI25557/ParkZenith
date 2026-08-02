@@ -20,5 +20,11 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
+    # AI Service Integration
+    AI_SERVICE_URL: str = "http://localhost:8001"
+    AI_SERVICE_TIMEOUT: float = 10.0
+    AI_SERVICE_ENABLED: bool = True
+
+
 
 settings = Settings()
