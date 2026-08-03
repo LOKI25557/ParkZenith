@@ -204,6 +204,11 @@ class QueueService:
 
         has_reservations = reservations_count > 0
 
+        # Get actual queue length from virtual queue manager in-memory state
+        actual_queue_length = 0
+        if self.virtual_queue_manager and hasattr(self.virtual_queue_manager, "_queues"):
+            actual_queue_length = len(self.virtual_queue_manager._queues.get(facility_id, []))
+
         # 5. Process everything through the QueueEngine
         result = self.queue_engine.process(
             facility_id=facility_id,
@@ -214,6 +219,7 @@ class QueueService:
             eta_minutes=eta_minutes,
             session_data_count=session_data_count,
             has_reservations=has_reservations,
+            actual_queue_length=actual_queue_length,
         )
 
         return result
