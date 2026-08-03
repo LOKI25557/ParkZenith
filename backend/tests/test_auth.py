@@ -28,19 +28,18 @@ async def override_get_async_session():
         yield session
 
 
-app.dependency_overrides[get_async_session] = override_get_async_session
-
-
 class TestAuthFlow(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self) -> None:
         async with engine_test.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+        app.dependency_overrides[get_async_session] = override_get_async_session
 
     async def asyncTearDown(self) -> None:
         async with engine_test.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
         await engine_test.dispose()
+        app.dependency_overrides.clear()
 
     async def test_auth_full_flow(self):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
