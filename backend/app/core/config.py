@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     AI_SERVICE_URL: str = "http://localhost:8001"
     AI_SERVICE_TIMEOUT: float = 10.0
     AI_SERVICE_ENABLED: bool = True
+    AI_SERVICE_RETRY_COUNT: int = 3
 
 
 

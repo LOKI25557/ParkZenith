@@ -73,10 +73,10 @@ sequenceDiagram
 
 | Scenario | Impact | Controlled Mitigation / Response |
 | :--- | :--- | :--- |
-| **AI Service Down** | Main backend cannot predict or recommend | Main backend client catches `ConnectError`, returns HTTP 503 `AI_SERVICE_UNAVAILABLE` with a clean JSON error response (no stack trace leak). |
-| **AI Service Timeout** | Delayed backend responses | Backend requests timeout after 10 seconds. Backend client catches `TimeoutException` and responds with HTTP 503 `AI_SERVICE_TIMEOUT`. |
-| **ML Model Not Trained** | Forecasting & recommendations fail | AI Service raises `ModelUnavailableError` (HTTP 404). Backend client catches this and responds to frontend with HTTP 503 `MODEL_UNAVAILABLE` indicating model needs training. |
-| **Insufficient Historical Logs** | Cannot predict occupancy | AI Service raises `InsufficientDataError` (HTTP 400). Response payload describes the issue clearly to help developer ingest seed data. |
+| **AI Service Down** | Main backend cannot predict or recommend | Main backend client attempts up to 3 retries (bounded, with exponential backoff). If still down, the backend API router gracefully degrades to database-driven fallbacks (counting slots and computing real-time occupancy directly from active `ParkingSlot` rows in the transactional database). |
+| **AI Service Timeout** | Delayed backend responses | Backend client attempts retries up to 3 times. If timeouts persist, the backend router degrades gracefully using local DB slot state calculations. |
+| **ML Model Not Trained** | Forecasting & recommendations fail | AI Service returns `prediction_status = "UNAVAILABLE"`. The backend client and router use current occupancy from local database rows as fallback. |
+| **Insufficient Historical Logs** | Cannot predict occupancy | AI Service uses current occupancy fallback and returns `prediction_status = "UNAVAILABLE"`. |
 | **Empty In-Memory Queue** | Dequeue request on empty gate | AI Service `VirtualQueueManager` handles gracefully, returns `success: false` and `user_id: null` instead of throwing an index error. |
 | **Duplicate Enqueue** | User attempts to join queue twice | AI Service checks queue list, skips duplicate insertion, and returns their *current* queue position. |
 

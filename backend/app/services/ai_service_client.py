@@ -23,9 +23,11 @@ class AIServiceClient:
         self,
         base_url: Optional[str] = None,
         timeout: Optional[float] = None,
+        retry_count: Optional[int] = None,
     ) -> None:
         self.base_url = (base_url or settings.AI_SERVICE_URL).rstrip("/")
         self.timeout = timeout or settings.AI_SERVICE_TIMEOUT
+        self.retry_count = retry_count if retry_count is not None else settings.AI_SERVICE_RETRY_COUNT
 
     async def _make_request(
         self,
@@ -36,6 +38,7 @@ class AIServiceClient:
     ) -> Dict[str, Any]:
         """
         Executes HTTP request, catches network errors, and wraps them in a consistent structure.
+        Supports bounded retries with exponential backoff.
         """
         if not settings.AI_SERVICE_ENABLED:
             logger.warning("AI Service is disabled in settings. Request to %s skipped.", path)
@@ -50,70 +53,86 @@ class AIServiceClient:
         url = f"{self.base_url}{path}"
         logger.info("Executing AI Service request: %s %s", method, url)
 
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.request(
-                    method=method,
-                    url=url,
-                    params=params,
-                    json=json_data,
+        import asyncio
+        retries = self.retry_count
+        backoff = 0.5
+
+        for attempt in range(retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.request(
+                        method=method,
+                        url=url,
+                        params=params,
+                        json=json_data,
+                      )
+
+                    if response.status_code >= 400:
+                        try:
+                            err_data = response.json()
+                            err_payload = err_data.get("error", {})
+                            err_msg = err_payload.get("message") or response.text
+                            err_code = err_payload.get("code") or "AI_SERVICE_ERROR"
+                        except Exception:
+                            err_msg = response.text
+                            err_code = "AI_SERVICE_ERROR"
+
+                        logger.error(
+                            "AI Service error response (HTTP %d) on path %s: %s",
+                            response.status_code,
+                            path,
+                            err_msg,
+                        )
+                        return {
+                            "success": False,
+                            "error": {
+                                "code": err_code,
+                                "message": err_msg,
+                                "status_code": response.status_code,
+                            },
+                        }
+
+                    data = response.json()
+                    return {"success": True, "data": data}
+
+            except httpx.TimeoutException as exc:
+                logger.warning(
+                    "Timeout connecting to AI Service at %s (Attempt %d/%d): %s",
+                    url, attempt + 1, retries + 1, str(exc)
                 )
-
-                if response.status_code >= 400:
-                    try:
-                        err_data = response.json()
-                        err_payload = err_data.get("error", {})
-                        err_msg = err_payload.get("message") or response.text
-                        err_code = err_payload.get("code") or "AI_SERVICE_ERROR"
-                    except Exception:
-                        err_msg = response.text
-                        err_code = "AI_SERVICE_ERROR"
-
-                    logger.error(
-                        "AI Service error response (HTTP %d) on path %s: %s",
-                        response.status_code,
-                        path,
-                        err_msg,
-                    )
+                if attempt == retries:
                     return {
                         "success": False,
                         "error": {
-                            "code": err_code,
-                            "message": err_msg,
-                            "status_code": response.status_code,
+                            "code": "AI_SERVICE_TIMEOUT",
+                            "message": "The connection to the AI Service timed out.",
                         },
                     }
+            except (httpx.ConnectError, httpx.RequestError) as exc:
+                logger.warning(
+                    "Connection failure connecting to AI Service at %s (Attempt %d/%d): %s",
+                    url, attempt + 1, retries + 1, str(exc)
+                )
+                if attempt == retries:
+                    return {
+                        "success": False,
+                        "error": {
+                            "code": "AI_SERVICE_UNAVAILABLE",
+                            "message": "The AI Service is currently unreachable or down.",
+                        },
+                    }
+            except Exception as exc:
+                logger.exception("Unexpected error in AI Service client for path %s: %s", path, str(exc))
+                return {
+                    "success": False,
+                    "error": {
+                        "code": "AI_SERVICE_INTERNAL_ERROR",
+                        "message": "An unexpected error occurred during service-to-service communication.",
+                    },
+                }
 
-                data = response.json()
-                return {"success": True, "data": data}
-
-        except httpx.TimeoutException as exc:
-            logger.error("Timeout connecting to AI Service at %s: %s", url, str(exc))
-            return {
-                "success": False,
-                "error": {
-                    "code": "AI_SERVICE_TIMEOUT",
-                    "message": "The connection to the AI Service timed out.",
-                },
-            }
-        except (httpx.ConnectError, httpx.RequestError) as exc:
-            logger.error("Connection failure connecting to AI Service at %s: %s", url, str(exc))
-            return {
-                "success": False,
-                "error": {
-                    "code": "AI_SERVICE_UNAVAILABLE",
-                    "message": "The AI Service is currently unreachable or down.",
-                },
-            }
-        except Exception as exc:
-            logger.exception("Unexpected error in AI Service client for path %s: %s", path, str(exc))
-            return {
-                "success": False,
-                "error": {
-                    "code": "AI_SERVICE_INTERNAL_ERROR",
-                    "message": "An unexpected error occurred during service-to-service communication.",
-                },
-            }
+            # Exponential backoff sleep before retrying
+            await asyncio.sleep(backoff * (2 ** attempt))
 
     # --- Occupancy Predictions ---
     async def get_occupancy_prediction(
@@ -300,6 +319,29 @@ class AIServiceClient:
             f"/queue/{facility_id}/cancel",
             json_data={"user_id": user_id},
         )
+
+    # --- Unified Intelligence Pipeline ---
+    async def get_intelligence_decision(
+        self,
+        facility_id: str,
+        eta_minutes: int = 20,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+        destination_latitude: Optional[float] = None,
+        destination_longitude: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        Retrieves a unified predictive intelligence decision for a facility.
+        """
+        payload = {
+            "facility_id": str(facility_id),
+            "eta_minutes": eta_minutes,
+            "latitude": latitude,
+            "longitude": longitude,
+            "destination_latitude": destination_latitude,
+            "destination_longitude": destination_longitude,
+        }
+        return await self._make_request("POST", "/intelligence/decision", json_data=payload)
 
 
 # Singleton client instance

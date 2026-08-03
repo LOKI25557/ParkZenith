@@ -69,5 +69,39 @@ class Settings(BaseSettings):
         description="Directory path for exporting dataset CSV files",
     )
 
+    # Production AI/ML Orchestration Configurations
+    FORECAST_HORIZONS: str = Field(
+        default="15,30,60",
+        description="Supported prediction horizons in minutes separated by commas"
+    )
+
+    # Availability Risk Thresholds
+    AVAILABILITY_HIGH_RISK_THRESHOLD: float = Field(
+        default=90.0,
+        description="Occupancy percentage above which risk is HIGH"
+    )
+    AVAILABILITY_MEDIUM_RISK_THRESHOLD: float = Field(
+        default=70.0,
+        description="Occupancy percentage above which risk is MEDIUM"
+    )
+    AVAILABILITY_HIGH_PROB_FULL_THRESHOLD: float = Field(
+        default=70.0,
+        description="Full probability percentage above which risk is HIGH"
+    )
+    AVAILABILITY_MEDIUM_PROB_FULL_THRESHOLD: float = Field(
+        default=20.0,
+        description="Full probability percentage above which risk is MEDIUM"
+    )
+
+    # Recommendation Weights (Must sum to 1.0)
+    RECOMMENDATION_WEIGHT_AVAILABILITY: float = Field(default=0.30)
+    RECOMMENDATION_WEIGHT_DISTANCE: float = Field(default=0.20)
+    RECOMMENDATION_WEIGHT_FORECAST: float = Field(default=0.15)
+    RECOMMENDATION_WEIGHT_CURRENT_OCCUPANCY: float = Field(default=0.10)
+    RECOMMENDATION_WEIGHT_WALKING_DISTANCE: float = Field(default=0.10)
+    RECOMMENDATION_WEIGHT_HISTORICAL_UTILIZATION: float = Field(default=0.05)
+    RECOMMENDATION_WEIGHT_PARKING_COST: float = Field(default=0.05)
+    RECOMMENDATION_WEIGHT_QUEUE_CONGESTION: float = Field(default=0.05)
+
 
 settings = Settings()

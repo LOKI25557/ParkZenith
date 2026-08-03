@@ -226,3 +226,47 @@ All virtual queue operations operate under concurrency-safe facility locks.
     "position": 3
   }
   ```
+
+---
+
+## 6. Unified AI Intelligence Pipeline
+
+### Get Unified Parking Decision
+- **Method & Path**: `POST /intelligence/decision`
+- **Request Body**:
+  ```json
+  {
+    "facility_id": "FAC-001",
+    "eta_minutes": 20,
+    "latitude": 12.9716,
+    "longitude": 77.5946,
+    "destination_latitude": 12.9750,
+    "destination_longitude": 77.6000
+  }
+  ```
+- **Response (200 OK)**:
+  ```json
+  {
+    "facility_id": "FAC-001",
+    "eta_minutes": 20,
+    "predicted_occupancy": 78.5,
+    "predicted_available_slots": 21,
+    "availability_probability": 0.82,
+    "queue_wait_minutes": 4.0,
+    "confidence": 0.87,
+    "recommendation": "GOOD_CHOICE",
+    "alternative_facilities": [
+      {
+        "facility_id": "FAC-003",
+        "score": 0.81
+      }
+    ],
+    "reasoning": [
+      "Predicted occupancy remains below critical threshold",
+      "Low queue pressure",
+      "High probability of slot availability"
+    ],
+    "prediction_status": "SUCCESS"
+  }
+  ```
+

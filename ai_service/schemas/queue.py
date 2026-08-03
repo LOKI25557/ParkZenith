@@ -55,6 +55,11 @@ class QueuePredictionResponse(BaseModel):
         ge=0.0,
         description="Expected waiting time in minutes to enter the facility."
     )
+    estimated_wait_minutes: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        description="Estimated waiting time in minutes."
+    )
     queue_trend: Literal["DECREASING", "STABLE", "INCREASING", "RAPIDLY_INCREASING"] = Field(
         ...,
         description="Current queue trend classification."
@@ -63,6 +68,10 @@ class QueuePredictionResponse(BaseModel):
         ...,
         description="Current congestion level classification."
     )
+    congestion_status: Optional[str] = Field(
+        default=None,
+        description="Detailed congestion status (e.g. LOW, MODERATE, HIGH, CRITICAL)"
+    )
     confidence: float = Field(
         ...,
         ge=0.0,
@@ -70,10 +79,10 @@ class QueuePredictionResponse(BaseModel):
         description="Prediction confidence score (0-100%)."
     )
 
-    @field_validator("current_queue_length", "predicted_queue_length", "expected_arrivals", "expected_departures", "expected_wait_minutes")
+    @field_validator("current_queue_length", "predicted_queue_length", "expected_arrivals", "expected_departures", "expected_wait_minutes", "estimated_wait_minutes")
     @classmethod
-    def validate_non_negative(cls, v: float) -> float:
-        if v < 0.0:
+    def validate_non_negative(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and v < 0.0:
             raise ValueError("Value must be non-negative")
         return v
 

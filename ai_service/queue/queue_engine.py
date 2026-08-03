@@ -62,6 +62,7 @@ class QueueEngine:
         session_data_count: int = 0,
         has_reservations: bool = False,
         entry_throughput_per_minute: float = 3.0,
+        actual_queue_length: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Runs the full queue estimation and prediction pipeline.
@@ -74,13 +75,17 @@ class QueueEngine:
         has_historical_sessions = session_data_count > 0 or arrival_rate_per_hour > 0.0 or departure_rate_per_hour > 0.0
         
         # 2. Current queue length estimation
-        current_queue = estimate_current_queue(
+        estimated_queue = estimate_current_queue(
             capacity=capacity,
             occupied_slots=occupied_slots,
             arrival_rate_per_hour=arrival_rate_per_hour,
             departure_rate_per_hour=departure_rate_per_hour,
             entry_throughput_per_minute=entry_throughput_per_minute,
         )
+        
+        current_queue = estimated_queue
+        if actual_queue_length is not None:
+            current_queue = max(float(actual_queue_length), estimated_queue)
         
         # 3. Future queue prediction
         predicted_queue, expected_arrivals, expected_departures, trend = predict_future_queue(
@@ -118,6 +123,8 @@ class QueueEngine:
             has_reservations=has_reservations,
         )
         
+        congestion_status = "CRITICAL" if congestion == "SEVERE" else congestion
+        
         return {
             "facility_id": facility_id,
             "timestamp": datetime.now(timezone.utc),
@@ -126,7 +133,9 @@ class QueueEngine:
             "expected_arrivals": expected_arrivals,
             "expected_departures": expected_departures,
             "expected_wait_minutes": wait_time,
+            "estimated_wait_minutes": wait_time,
             "queue_trend": trend,
             "congestion_level": congestion,
+            "congestion_status": congestion_status,
             "confidence": confidence,
         }

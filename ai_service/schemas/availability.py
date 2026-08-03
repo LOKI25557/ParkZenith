@@ -35,6 +35,8 @@ class AvailabilityResponse(BaseModel):
     availability_probability: float = Field(..., description="Probability (0-100%) that space will be available at ETA.")
     occupancy_risk: str = Field(..., description="Level of occupancy risk at ETA: LOW, MEDIUM, or HIGH.")
     confidence: float = Field(..., description="Prediction confidence score (0-100%).")
+    availability_status: str = Field(default="UNKNOWN", description="Calculated status (e.g. AVAILABLE, LIMITED, HIGH_DEMAND, UNLIKELY, UNKNOWN)")
+    risk_level: str = Field(default="UNKNOWN", description="Detailed risk level (e.g. LOW_RISK, MEDIUM_RISK, HIGH_RISK)")
 
 
 class AvailabilitySummary(BaseModel):
