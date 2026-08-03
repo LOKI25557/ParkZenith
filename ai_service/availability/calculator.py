@@ -50,13 +50,20 @@ def calculate_availability_probability(
 def determine_occupancy_risk(expected_occupancy_pct: float, probability_full: float) -> str:
     """
     Categorizes the risk of the parking facility being full at arrival:
-    - HIGH: Forecast occupancy >= 90% OR probability full >= 70%
-    - MEDIUM: Forecast occupancy between 70% and 90% OR probability full between 20% and 70%
+    - HIGH: Forecast occupancy >= HIGH_THRESHOLD OR probability full >= HIGH_PROB_THRESHOLD
+    - MEDIUM: Forecast occupancy >= MEDIUM_THRESHOLD OR probability full >= MEDIUM_PROB_THRESHOLD
     - LOW: Otherwise
     """
-    if expected_occupancy_pct >= 90.0 or probability_full >= 70.0:
+    from ai_service.config.settings import settings
+
+    high_risk_occ = settings.AVAILABILITY_HIGH_RISK_THRESHOLD
+    med_risk_occ = settings.AVAILABILITY_MEDIUM_RISK_THRESHOLD
+    high_risk_prob = settings.AVAILABILITY_HIGH_PROB_FULL_THRESHOLD
+    med_risk_prob = settings.AVAILABILITY_MEDIUM_PROB_FULL_THRESHOLD
+
+    if expected_occupancy_pct >= high_risk_occ or probability_full >= high_risk_prob:
         return "HIGH"
-    elif expected_occupancy_pct >= 70.0 or probability_full >= 20.0:
+    elif expected_occupancy_pct >= med_risk_occ or probability_full >= med_risk_prob:
         return "MEDIUM"
     else:
         return "LOW"

@@ -120,6 +120,24 @@ class AvailabilityEngine:
 
         reliability = determine_prediction_reliability(confidence_score)
 
+        # Determine availability status
+        if forecast_occupancy_pct_final >= 95.0:
+            availability_status = "UNLIKELY"
+        elif forecast_occupancy_pct_final >= 85.0:
+            availability_status = "HIGH_DEMAND"
+        elif forecast_occupancy_pct_final >= 70.0:
+            availability_status = "LIMITED"
+        else:
+            availability_status = "AVAILABLE"
+
+        # Determine risk level
+        if occupancy_risk == "HIGH":
+            risk_level = "HIGH_RISK"
+        elif occupancy_risk == "MEDIUM":
+            risk_level = "MEDIUM_RISK"
+        else:
+            risk_level = "LOW_RISK"
+
         result = {
             "facility_id": facility_id,
             "eta_minutes": eta_minutes,
@@ -129,7 +147,9 @@ class AvailabilityEngine:
             "availability_probability": availability_probability,
             "occupancy_risk": occupancy_risk,
             "confidence": confidence_score,
-            "prediction_reliability": reliability
+            "prediction_reliability": reliability,
+            "availability_status": availability_status,
+            "risk_level": risk_level,
         }
 
         logger.info(
