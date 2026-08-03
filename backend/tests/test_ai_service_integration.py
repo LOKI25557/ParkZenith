@@ -62,7 +62,7 @@ class TestAIServiceIntegration(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("Facility FAC-XYZ has no historical records.", resp.json()["detail"])
 
     async def test_client_error_model_unavailable(self):
-        """Test client handles model unavailable error properly."""
+        """Test client handles model unavailable error properly by falling back gracefully."""
         mock_error = {
             "success": False,
             "error": {
@@ -74,8 +74,8 @@ class TestAIServiceIntegration(unittest.IsolatedAsyncioTestCase):
         with patch.object(AIServiceClient, "_make_request", return_value=mock_error):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
                 resp = await ac.get("/prediction/occupancy/1?horizon_minutes=15")
-                self.assertEqual(resp.status_code, 503)
-                self.assertIn("Forecasting models have not been trained yet.", resp.json()["detail"])
+                self.assertEqual(resp.status_code, 200)
+                self.assertEqual(resp.json()["prediction_status"], "DEGRADED_FALLBACK")
 
     async def test_client_network_failure(self):
         """Test client handles unreachable AI Service."""
