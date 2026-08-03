@@ -182,24 +182,62 @@ class ForecastingService:
         Generates forecast predictions for 15, 30, and 60 minutes intervals,
         returning the snapshot payload with confidence.
         """
+        # Establish a safe baseline for current occupancy in case of failure
+        current_occ = 50.0
+        try:
+            occ_stmt = (
+                select(OccupancyHistory)
+                .where(OccupancyHistory.facility_id == facility_id)
+                .order_by(OccupancyHistory.collected_at.desc())
+                .limit(1)
+            )
+            latest_occ = (await db.execute(occ_stmt)).scalar_one_or_none()
+            if latest_occ:
+                current_occ = float(latest_occ.occupancy_percentage)
+        except Exception:
+            pass
+
+        fallback_payload = {
+            "facility_id": facility_id,
+            "current_occupancy": current_occ,
+            "prediction_15": current_occ,
+            "prediction_30": current_occ,
+            "prediction_60": current_occ,
+            "confidence": 0.0,
+            "prediction_status": "UNAVAILABLE"
+        }
+
+        # Validate model package availability
         if not self.forecaster.is_loaded:
-            # Try to load, if not trained raise error
             if not self.forecaster.load():
-                raise ModelUnavailableError("Forecasting models are not trained. Please train the model first.")
+                logger.warning("Forecasting models are not trained or loaded. Returning fallback.")
+                return fallback_payload
 
-        features_df, current_occ = await self._fetch_and_prepare_latest_features(db, facility_id)
+        # Validate prediction horizon
+        if primary_horizon_minutes not in (15, 30, 60):
+            logger.warning("Unsupported forecast snapshot horizon: %d. Returning fallback.", primary_horizon_minutes)
+            return fallback_payload
 
-        # Generate predictions
+        # Handle features extraction safely
+        try:
+            features_df, current_occ = await self._fetch_and_prepare_latest_features(db, facility_id)
+        except Exception as e:
+            logger.warning("Failed to prepare latest features for facility %d: %s. Returning fallback.", facility_id, str(e))
+            return fallback_payload
+
+        # Generate predictions safely
+        import math
         try:
             pred_15 = self.forecaster.predict(15, features_df)
             pred_30 = self.forecaster.predict(30, features_df)
             pred_60 = self.forecaster.predict(60, features_df)
+            
+            # Prevent NaN/inf values
+            if not (math.isfinite(pred_15) and math.isfinite(pred_30) and math.isfinite(pred_60)):
+                raise ValueError("Forecast returned NaN or non-finite values.")
         except Exception as e:
-            logger.exception("Prediction run failed: %s", str(e))
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Forecasting prediction failed: {str(e)}"
-            )
+            logger.warning("Prediction execution failed for facility %d: %s. Returning fallback.", facility_id, str(e))
+            return fallback_payload
 
         # Determine confidence of the queried primary horizon
         metrics = self.forecaster.get_metrics()
@@ -212,7 +250,8 @@ class ForecastingService:
             "prediction_15": pred_15,
             "prediction_30": pred_30,
             "prediction_60": pred_60,
-            "confidence": round(confidence, 2)
+            "confidence": round(confidence, 2),
+            "prediction_status": "SUCCESS"
         }
 
     async def get_custom_forecast(
@@ -226,34 +265,66 @@ class ForecastingService:
         Generates prediction for a custom interval.
         Dynamically trains the target regressor if missing.
         """
-        if target_minutes <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Target prediction minutes must be positive."
+        # Establish baseline fallback current occupancy
+        current_occ = 50.0
+        try:
+            occ_stmt = (
+                select(OccupancyHistory)
+                .where(OccupancyHistory.facility_id == facility_id)
+                .order_by(OccupancyHistory.collected_at.desc())
+                .limit(1)
             )
+            latest_occ = (await db.execute(occ_stmt)).scalar_one_or_none()
+            if latest_occ:
+                current_occ = float(latest_occ.occupancy_percentage)
+        except Exception:
+            pass
+
+        fallback_payload = {
+            "facility_id": facility_id,
+            "current_occupancy": current_occ,
+            "prediction_custom": current_occ,
+            "confidence": 0.0,
+            "prediction_status": "UNAVAILABLE"
+        }
+
+        if target_minutes <= 0:
+            logger.warning("Custom forecast requested with invalid horizon: %d. Returning fallback.", target_minutes)
+            return fallback_payload
 
         # Ensure model is ready (and trains dynamically if missing)
-        logger.info("Custom forecast request for %d minutes...", target_minutes)
-        meta = await self.forecaster.get_or_train_custom_horizon(db, target_minutes, export_path)
+        try:
+            logger.info("Custom forecast request for %d minutes...", target_minutes)
+            meta = await self.forecaster.get_or_train_custom_horizon(db, target_minutes, export_path)
+        except Exception as e:
+            logger.warning("Custom horizon model training/loading failed for %d minutes: %s. Returning fallback.", target_minutes, str(e))
+            return fallback_payload
         
-        features_df, current_occ = await self._fetch_and_prepare_latest_features(db, facility_id)
+        # Load features safely
+        try:
+            features_df, current_occ = await self._fetch_and_prepare_latest_features(db, facility_id)
+        except Exception as e:
+            logger.warning("Failed to prepare features for custom forecast of facility %d: %s. Returning fallback.", facility_id, str(e))
+            return fallback_payload
         
+        # Run inference safely
         try:
             pred = self.forecaster.predict(target_minutes, features_df)
+            import math
+            if not math.isfinite(pred):
+                raise ValueError("Custom forecast returned NaN or non-finite values.")
         except Exception as e:
-            logger.exception("Prediction run for custom horizon failed: %s", str(e))
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Forecasting prediction failed: {str(e)}"
-            )
+            logger.warning("Prediction inference failed for custom horizon %d: %s. Returning fallback.", target_minutes, str(e))
+            return fallback_payload
 
-        confidence = meta["metrics"]["confidence"]
+        confidence = meta.get("metrics", {}).get("confidence", 95.0)
 
         return {
             "facility_id": facility_id,
             "current_occupancy": current_occ,
             "prediction_custom": pred,
-            "confidence": round(confidence, 2)
+            "confidence": round(confidence, 2),
+            "prediction_status": "SUCCESS"
         }
 
 
