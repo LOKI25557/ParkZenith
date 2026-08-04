@@ -1,12 +1,17 @@
-from fastapi import FastAPI, Response, status
+from fastapi import FastAPI, Response, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import logging
+import time
+import uuid
 
 from .core.config import settings
+from .core.logging_setup import setup_logging, request_context
 from .api.router import api_router
 from .database.session import engine, AsyncSessionLocal
 
+# Initialize structured logging formatter
+setup_logging()
 logger = logging.getLogger("backend.main")
 
 app = FastAPI(title="ParkZenith API", debug=settings.DEBUG)
@@ -20,6 +25,60 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+    ctx = {
+        "request_id": request_id,
+        "method": request.method,
+        "route": request.url.path,
+        "client_ip": request.client.host if request.client else "unknown",
+    }
+    
+    # Extract facility ID if present in query params or path
+    if "facility_id" in request.path_params:
+        ctx["facility_id"] = str(request.path_params["facility_id"])
+    elif "facility_id" in request.query_params:
+        ctx["facility_id"] = str(request.query_params["facility_id"])
+
+    token = request_context.set(ctx)
+    start_time = time.time()
+    logger.info("Request started: %s %s", request.method, request.url.path)
+    
+    try:
+        response = await call_next(request)
+        duration_ms = int((time.time() - start_time) * 1000)
+        logger.info(
+            "Request completed: %s %s | status=%d | duration=%dms",
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+            extra={
+                "status_code": response.status_code,
+                "duration_ms": duration_ms
+            }
+        )
+        response.headers["X-Request-ID"] = request_id
+        return response
+    except Exception as exc:
+        duration_ms = int((time.time() - start_time) * 1000)
+        logger.exception(
+            "Request failed: %s %s | error=%s | duration=%dms",
+            request.method,
+            request.url.path,
+            str(exc),
+            duration_ms,
+            extra={
+                "status_code": 500,
+                "duration_ms": duration_ms
+            }
+        )
+        raise exc
+    finally:
+        request_context.reset(token)
 
 
 @app.on_event("startup")
