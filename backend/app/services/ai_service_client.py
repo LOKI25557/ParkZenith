@@ -23,10 +23,12 @@ class AIServiceClient:
         self,
         base_url: Optional[str] = None,
         timeout: Optional[float] = None,
+        connect_timeout: Optional[float] = None,
         retry_count: Optional[int] = None,
     ) -> None:
         self.base_url = (base_url or settings.AI_SERVICE_URL).rstrip("/")
         self.timeout = timeout or settings.AI_SERVICE_TIMEOUT
+        self.connect_timeout = connect_timeout or 5.0
         self.retry_count = retry_count if retry_count is not None else settings.AI_SERVICE_RETRY_COUNT
 
     async def _make_request(
@@ -35,10 +37,11 @@ class AIServiceClient:
         path: str,
         params: Optional[Dict[str, Any]] = None,
         json_data: Optional[Dict[str, Any]] = None,
+        retry_allowed: bool = True,
     ) -> Dict[str, Any]:
         """
         Executes HTTP request, catches network errors, and wraps them in a consistent structure.
-        Supports bounded retries with exponential backoff.
+        Supports bounded retries with exponential backoff on idempotent requests.
         """
         if not settings.AI_SERVICE_ENABLED:
             logger.warning("AI Service is disabled in settings. Request to %s skipped.", path)
@@ -53,19 +56,27 @@ class AIServiceClient:
         url = f"{self.base_url}{path}"
         logger.info("Executing AI Service request: %s %s", method, url)
 
-        import asyncio
-        retries = self.retry_count
+        # Disable retries for unsafe/non-idempotent operations
+        is_idempotent = method in ("GET", "HEAD", "OPTIONS") or (
+            method == "POST" and not any(op in path for op in ("enqueue", "dequeue", "cancel"))
+        )
+        
+        retries = self.retry_count if (retry_allowed and is_idempotent) else 0
         backoff = 0.5
+        import asyncio
+
+        # Use structured timeout settings
+        timeout_config = httpx.Timeout(self.timeout, connect=self.connect_timeout)
 
         for attempt in range(retries + 1):
             try:
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                async with httpx.AsyncClient(timeout=timeout_config) as client:
                     response = await client.request(
                         method=method,
                         url=url,
                         params=params,
                         json=json_data,
-                      )
+                    )
 
                     if response.status_code >= 400:
                         try:
