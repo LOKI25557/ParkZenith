@@ -1,0 +1,86 @@
+name: Production Validation Pipeline
+
+on:
+  push:
+    branches: [ main, master, release/**, pravee ]
+  pull_request:
+    branches: [ main, master, release/**, pravee ]
+
+jobs:
+  validate:
+    name: Lint, Migrate, and Test
+    runs-on: ubuntu-latest
+
+    services:
+      # Optional: if PostgreSQL/MySQL were used, they'd be configured here.
+      # For now, SQLite is fully self-contained.
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Common Dev Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black bandit safety pytest pytest-asyncio pytest-cov httpx
+
+      - name: Install Backend Dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Run Backend Lint Rules
+        run: |
+          # Verify style guides compliance
+          flake8 backend/app --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 backend/app --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Run Backend Security Static Analysis
+        run: |
+          # Scan for vulnerabilities
+          bandit -r backend/app -x backend/app/tests
+
+      - name: Validate Backend Database Migrations
+        run: |
+          cd backend
+          # Run database migrations to test upgrade path on a fresh SQLite db
+          export DATABASE_URL=sqlite+aiosqlite:///backend_test_mig.db
+          alembic upgrade head
+
+      - name: Run Backend Test Suite
+        run: |
+          cd backend
+          export ENVIRONMENT=development
+          python -m pytest tests/
+
+      - name: Install AI Service Dependencies
+        run: |
+          cd ai_service
+          pip install -r requirements.txt
+
+      - name: Run AI Service Lint Rules
+        run: |
+          flake8 ai_service --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 ai_service --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Run AI Service Security Static Analysis
+        run: |
+          bandit -r ai_service -x ai_service/tests
+
+      - name: Validate AI Service Database Migrations
+        run: |
+          cd ai_service
+          export DATABASE_URL=sqlite+aiosqlite:///ai_service_test_mig.db
+          alembic upgrade head
+
+      - name: Run AI Service Test Suite
+        run: |
+          cd ai_service
+          export ENVIRONMENT=development
+          python -m pytest tests/
