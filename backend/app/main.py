@@ -18,13 +18,55 @@ app = FastAPI(title="ParkZenith API", debug=settings.DEBUG)
 
 # Configure CORS origins dynamically
 allowed_origins = [origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",") if origin.strip()]
+if settings.ENVIRONMENT == "production":
+    if not allowed_origins or "*" in allowed_origins:
+        # In production, default to empty to reject unauthorized requests unless configured
+        logger.warning("Production environment detected. Wildcard CORS * is disabled for safety.")
+        allowed_origins = []
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_credentials=True if allowed_origins else False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Content-Security-Policy"] = "default-src 'self';"
+    return response
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled Exception encountered at path=%s: %s", request.url.path, str(exc))
+    
+    if settings.ENVIRONMENT == "production":
+        message = "An unexpected internal error occurred."
+    else:
+        message = str(exc)
+        
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=500,
+        content={
+            "success": False,
+            "detail": message,
+            "error": {
+                "code": "INTERNAL_SERVER_ERROR",
+                "message": message,
+                "details": {"error_type": exc.__class__.__name__},
+                "path": request.url.path,
+            }
+        },
+    )
 
 
 @app.middleware("http")
@@ -87,7 +129,25 @@ async def log_requests(request: Request, call_next):
                 "duration_ms": duration_ms
             }
         )
-        raise exc
+        if settings.ENVIRONMENT == "production":
+            message = "An unexpected internal error occurred."
+        else:
+            message = str(exc)
+            
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "detail": message,
+                "error": {
+                    "code": "INTERNAL_SERVER_ERROR",
+                    "message": message,
+                    "details": {"error_type": exc.__class__.__name__},
+                    "path": request.url.path,
+                }
+            },
+        )
     finally:
         request_context.reset(token)
 
