@@ -68,7 +68,19 @@ class AIServiceClient:
         # Use structured timeout settings
         timeout_config = httpx.Timeout(self.timeout, connect=self.connect_timeout)
 
+        # Prepare headers with correlation ID
+        headers = {}
+        try:
+            from backend.app.core.logging_setup import request_context
+            ctx = request_context.get()
+            if ctx and "request_id" in ctx:
+                headers["X-Request-ID"] = ctx["request_id"]
+        except Exception:
+            pass
+
         for attempt in range(retries + 1):
+            import time
+            start_time = time.time()
             try:
                 async with httpx.AsyncClient(timeout=timeout_config) as client:
                     response = await client.request(
@@ -76,9 +88,14 @@ class AIServiceClient:
                         url=url,
                         params=params,
                         json=json_data,
+                        headers=headers,
                     )
 
+                    duration_ms = (time.time() - start_time) * 1000
+                    from backend.app.core.metrics import metrics
+
                     if response.status_code >= 400:
+                        metrics.record_ai_latency(duration_ms, success=False)
                         try:
                             err_data = response.json()
                             err_payload = err_data.get("error", {})
@@ -103,10 +120,15 @@ class AIServiceClient:
                             },
                         }
 
+                    metrics.record_ai_latency(duration_ms, success=True)
                     data = response.json()
                     return {"success": True, "data": data}
 
             except httpx.TimeoutException as exc:
+                duration_ms = (time.time() - start_time) * 1000
+                from backend.app.core.metrics import metrics
+                metrics.record_ai_latency(duration_ms, success=False)
+                metrics.record_prediction_failure()
                 logger.warning(
                     "Timeout connecting to AI Service at %s (Attempt %d/%d): %s",
                     url, attempt + 1, retries + 1, str(exc)
@@ -120,6 +142,10 @@ class AIServiceClient:
                         },
                     }
             except (httpx.ConnectError, httpx.RequestError) as exc:
+                duration_ms = (time.time() - start_time) * 1000
+                from backend.app.core.metrics import metrics
+                metrics.record_ai_latency(duration_ms, success=False)
+                metrics.record_prediction_failure()
                 logger.warning(
                     "Connection failure connecting to AI Service at %s (Attempt %d/%d): %s",
                     url, attempt + 1, retries + 1, str(exc)
@@ -133,6 +159,10 @@ class AIServiceClient:
                         },
                     }
             except Exception as exc:
+                duration_ms = (time.time() - start_time) * 1000
+                from backend.app.core.metrics import metrics
+                metrics.record_ai_latency(duration_ms, success=False)
+                metrics.record_prediction_failure()
                 logger.exception("Unexpected error in AI Service client for path %s: %s", path, str(exc))
                 return {
                     "success": False,

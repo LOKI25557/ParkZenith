@@ -50,6 +50,11 @@ async def log_requests(request: Request, call_next):
     try:
         response = await call_next(request)
         duration_ms = int((time.time() - start_time) * 1000)
+        
+        # Record request metrics
+        from .core.metrics import metrics
+        metrics.record_request(request.url.path, response.status_code, duration_ms)
+
         logger.info(
             "Request completed: %s %s | status=%d | duration=%dms",
             request.method,
@@ -65,6 +70,12 @@ async def log_requests(request: Request, call_next):
         return response
     except Exception as exc:
         duration_ms = int((time.time() - start_time) * 1000)
+        
+        # Record request failure metrics
+        from .core.metrics import metrics
+        metrics.record_request(request.url.path, 500, duration_ms)
+        metrics.record_db_failure()  # Assume DB/Internal failure for exceptions
+
         logger.exception(
             "Request failed: %s %s | error=%s | duration=%dms",
             request.method,
@@ -106,6 +117,13 @@ async def health():
         "service": settings.PROJECT_NAME,
         "environment": settings.ENVIRONMENT,
     }
+
+
+@app.get("/metrics", tags=["health"])
+async def get_metrics():
+    """Retrieve runtime application metrics."""
+    from .core.metrics import metrics
+    return metrics.get_metrics_summary()
 
 
 @app.get("/ready", tags=["health"])
