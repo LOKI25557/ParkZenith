@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 import httpx
 from httpx import AsyncClient, ASGITransport
 
@@ -36,6 +36,8 @@ async def override_get_async_session():
 class TestE2EPredictionIntegration(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self) -> None:
+        from backend.app.core.cache import cache
+        cache.clear()
         async with engine_test.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         app.dependency_overrides[get_async_session] = override_get_async_session
@@ -261,5 +263,35 @@ class TestE2EPredictionIntegration(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(len(data["alternative_facilities"]), 1)
                 self.assertEqual(data["alternative_facilities"][0]["facility_id"], "2")
 
+    async def test_8_prediction_caching(self):
+        """Test that subsequent identical prediction calls are served from cache and do not invoke the client."""
+        from backend.app.core.cache import cache
+        cache.clear()
+        
+        mock_ai_response = {
+            "success": True,
+            "data": {
+                "facility_id": 1,
+                "current_occupancy": 30.0,
+                "prediction_15": 35.0,
+                "prediction_30": 40.0,
+                "prediction_60": 45.0,
+                "confidence": 92.0,
+                "prediction_status": "NORMAL"
+            }
+        }
 
-from unittest.mock import MagicMock
+        with patch.object(AIServiceClient, "_make_request", return_value=mock_ai_response) as mock_make_request:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+                # First request (should invoke client)
+                resp1 = await ac.get("/prediction/occupancy/1?horizon_minutes=15")
+                self.assertEqual(resp1.status_code, 200)
+                self.assertEqual(resp1.json()["prediction_15"], 35.0)
+                
+                # Second request (should hit cache)
+                resp2 = await ac.get("/prediction/occupancy/1?horizon_minutes=15")
+                self.assertEqual(resp2.status_code, 200)
+                self.assertEqual(resp2.json()["prediction_15"], 35.0)
+
+                # The mock client should only have been called once
+                mock_make_request.assert_called_once()

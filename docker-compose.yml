@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  ai-service:
+    build:
+      context: ./ai_service
+      dockerfile: Dockerfile
+    image: parkzenith-ai-service:latest
+    ports:
+      - "8001:8001"
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+      - DATABASE_URL=sqlite+aiosqlite:////app/ai_service/data/ai_service.db
+      - BACKEND_API_KEY=production-secure-backend-ai-integration-key-12345
+      - BACKEND_URL=http://backend:8000
+    volumes:
+      - ai-service-data:/app/ai_service/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: parkzenith-backend:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+      - DATABASE_URL=sqlite+aiosqlite:////app/backend/data/backend.db
+      - SECRET_KEY=production-extremely-strong-and-secure-jwt-signing-secret-key-98765
+      - BACKEND_API_KEY=production-secure-backend-ai-integration-key-12345
+      - AI_SERVICE_URL=http://ai-service:8001
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000
+    volumes:
+      - backend-data:/app/backend/data
+    depends_on:
+      ai-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  ai-service-data:
+  backend-data:

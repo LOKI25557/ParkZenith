@@ -6,11 +6,13 @@ Phase 1: Data Collection Pipeline
 from contextlib import asynccontextmanager
 import logging
 from typing import AsyncGenerator, Dict, Any
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, status, Request
 from fastapi.middleware.cors import CORSMiddleware
+import time
+import uuid
 
 from ai_service.config.settings import settings
-from ai_service.core.logging import setup_logging
+from ai_service.core.logging import setup_logging, request_context
 from ai_service.core.exception_handlers import register_exception_handlers
 from ai_service.database.session import init_db
 from ai_service.scheduler.scheduler import collection_scheduler
@@ -75,6 +77,61 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+    ctx = {
+        "request_id": request_id,
+        "method": request.method,
+        "route": request.url.path,
+        "client_ip": request.client.host if request.client else "unknown",
+    }
+    
+    # Extract facility ID if present in query params or path
+    if "facility_id" in request.path_params:
+        ctx["facility_id"] = str(request.path_params["facility_id"])
+    elif "facility_id" in request.query_params:
+        ctx["facility_id"] = str(request.query_params["facility_id"])
+
+    token = request_context.set(ctx)
+    start_time = time.time()
+    logger.info("Request started: %s %s", request.method, request.url.path)
+    
+    try:
+        response = await call_next(request)
+        duration_ms = int((time.time() - start_time) * 1000)
+        logger.info(
+            "Request completed: %s %s | status=%d | duration=%dms",
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+            extra={
+                "status_code": response.status_code,
+                "duration_ms": duration_ms
+            }
+        )
+        response.headers["X-Request-ID"] = request_id
+        return response
+    except Exception as exc:
+        duration_ms = int((time.time() - start_time) * 1000)
+        logger.exception(
+            "Request failed: %s %s | error=%s | duration=%dms",
+            request.method,
+            request.url.path,
+            str(exc),
+            duration_ms,
+            extra={
+                "status_code": 500,
+                "duration_ms": duration_ms
+            }
+        )
+        raise exc
+    finally:
+        request_context.reset(token)
+
 
 # Register custom exception handlers
 register_exception_handlers(app)

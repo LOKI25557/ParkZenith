@@ -9,6 +9,7 @@ from backend.app.database.session import get_async_session
 from backend.app.models.parking import ParkingFacility, ParkingSlot
 from backend.app.services.ai_service_client import ai_service_client
 from backend.app.schemas.prediction import RecommendationRequestSchema
+from backend.app.core.cache import cache
 
 logger = logging.getLogger("backend.api.prediction")
 
@@ -86,13 +87,19 @@ async def get_occupancy_forecast(
     """
     Retrieves occupancy prediction forecasts. Falls back gracefully to DB slots occupancy if down.
     """
+    cache_key = f"occ:{facility_id}:{horizon_minutes}"
+    cached_val = cache.get(cache_key)
+    if cached_val is not None:
+        logger.info("Serving occupancy prediction from cache for facility %d", facility_id)
+        return cached_val
+
     res = await ai_service_client.get_occupancy_prediction(facility_id, horizon_minutes)
     if not res.get("success", False):
         code = res.get("error", {}).get("code")
         if code in ("AI_SERVICE_UNAVAILABLE", "AI_SERVICE_TIMEOUT", "AI_SERVICE_DISABLED", "MODEL_UNAVAILABLE"):
             logger.warning("AI Service unavailable. Activating DB fallback for facility %d occupancy.", facility_id)
             current_occ, _, _ = await db_fallback_occupancy(db, facility_id)
-            return {
+            fallback_res = {
                 "facility_id": facility_id,
                 "current_occupancy": current_occ,
                 "prediction_15": current_occ,
@@ -101,7 +108,12 @@ async def get_occupancy_forecast(
                 "confidence": 0.0,
                 "prediction_status": "DEGRADED_FALLBACK"
             }
-    return handle_client_response(res)
+            cache.set(cache_key, fallback_res, 10)
+            return fallback_res
+
+    res_data = handle_client_response(res)
+    cache.set(cache_key, res_data, 60)
+    return res_data
 
 
 @router.get("/availability/{facility_id}")
@@ -113,6 +125,12 @@ async def get_availability_forecast(
     """
     Retrieves availability prediction. Falls back gracefully to DB slots calculations if down.
     """
+    cache_key = f"avail:{facility_id}:{eta_minutes}"
+    cached_val = cache.get(cache_key)
+    if cached_val is not None:
+        logger.info("Serving availability prediction from cache for facility %s", facility_id)
+        return cached_val
+
     res = await ai_service_client.get_availability_prediction(facility_id, eta_minutes)
     if not res.get("success", False):
         code = res.get("error", {}).get("code")
@@ -129,7 +147,7 @@ async def get_availability_forecast(
             elif current_occ >= 70.0:
                 risk = "MEDIUM"
 
-            return {
+            fallback_res = {
                 "facility_id": facility_id,
                 "eta_minutes": eta_minutes,
                 "current_occupancy": current_occ,
@@ -142,7 +160,12 @@ async def get_availability_forecast(
                 "availability_status": "HIGH_DEMAND" if risk == "HIGH" else ("LIMITED" if risk == "MEDIUM" else "AVAILABLE"),
                 "risk_level": f"{risk}_RISK",
             }
-    return handle_client_response(res)
+            cache.set(cache_key, fallback_res, 10)
+            return fallback_res
+
+    res_data = handle_client_response(res)
+    cache.set(cache_key, res_data, 60)
+    return res_data
 
 
 @router.post("/recommendations")
@@ -150,6 +173,12 @@ async def get_recommendations(req: RecommendationRequestSchema, db: AsyncSession
     """
     Query the Smart Recommendation Engine. Falls back to distance-based DB ranking if down.
     """
+    cache_key = f"rec:{req.latitude}:{req.longitude}:{req.eta_minutes}:{req.max_distance_km}:{req.max_results}:{req.max_parking_fee}:{req.parking_type}:{req.accessibility_required}"
+    cached_val = cache.get(cache_key)
+    if cached_val is not None:
+        logger.info("Serving recommendations from cache")
+        return cached_val
+
     res = await ai_service_client.get_recommendations(
         latitude=req.latitude,
         longitude=req.longitude,
@@ -211,12 +240,17 @@ async def get_recommendations(req: RecommendationRequestSchema, db: AsyncSession
             for idx, item in enumerate(results):
                 item["rank"] = idx + 1
                 
-            return {
+            fallback_res = {
                 "recommendations": results[:req.max_results],
                 "total_candidates": len(results),
                 "returned_results": len(results[:req.max_results])
             }
-    return handle_client_response(res)
+            cache.set(cache_key, fallback_res, 10)
+            return fallback_res
+
+    res_data = handle_client_response(res)
+    cache.set(cache_key, res_data, 60)
+    return res_data
 
 
 @router.get("/queue/{facility_id}")
@@ -228,6 +262,12 @@ async def get_queue_metrics(
     """
     Retrieves queue metrics. Falls back gracefully to zero wait/length if down.
     """
+    cache_key = f"queue:{facility_id}:{eta_minutes}"
+    cached_val = cache.get(cache_key)
+    if cached_val is not None:
+        logger.info("Serving queue metrics from cache for facility %s", facility_id)
+        return cached_val
+
     if eta_minutes is not None:
         res = await ai_service_client.get_queue_prediction(facility_id, eta_minutes)
     else:
@@ -238,7 +278,7 @@ async def get_queue_metrics(
         if code in ("AI_SERVICE_UNAVAILABLE", "AI_SERVICE_TIMEOUT", "AI_SERVICE_DISABLED", "MODEL_UNAVAILABLE"):
             logger.warning("AI Service unavailable. Activating DB fallback for facility %s queue.", facility_id)
             from datetime import datetime, timezone
-            return {
+            fallback_res = {
                 "facility_id": facility_id,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "current_queue_length": 0.0,
@@ -253,7 +293,12 @@ async def get_queue_metrics(
                 "confidence": 0.0,
                 "prediction_status": "DEGRADED_FALLBACK"
             }
-    return handle_client_response(res)
+            cache.set(cache_key, fallback_res, 10)
+            return fallback_res
+
+    res_data = handle_client_response(res)
+    cache.set(cache_key, res_data, 30)
+    return res_data
 
 
 @router.get("/decision/{facility_id}")
@@ -269,6 +314,12 @@ async def get_intelligence_decision(
     """
     Retrieve unified predictive intelligence decision from orchestrator, falling back gracefully to DB slot analysis if down.
     """
+    cache_key = f"decision:{facility_id}:{eta_minutes}:{latitude}:{longitude}:{destination_latitude}:{destination_longitude}"
+    cached_val = cache.get(cache_key)
+    if cached_val is not None:
+        logger.info("Serving unified decision from cache for facility %s", facility_id)
+        return cached_val
+
     res = await ai_service_client.get_intelligence_decision(
         facility_id=facility_id,
         eta_minutes=eta_minutes,
@@ -314,7 +365,7 @@ async def get_intelligence_decision(
                     "score": round((100.0 - a_occ) / 100.0, 2)
                 })
 
-            return {
+            fallback_res = {
                 "facility_id": facility_id,
                 "eta_minutes": eta_minutes,
                 "predicted_occupancy": current_occ,
@@ -327,4 +378,9 @@ async def get_intelligence_decision(
                 "reasoning": reasoning,
                 "prediction_status": "DEGRADED_FALLBACK"
             }
-    return handle_client_response(res)
+            cache.set(cache_key, fallback_res, 10)
+            return fallback_res
+
+    res_data = handle_client_response(res)
+    cache.set(cache_key, res_data, 60)
+    return res_data
