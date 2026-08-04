@@ -1,15 +1,21 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+import httpx
+import logging
 
 from .core.config import settings
 from .api.router import api_router
-from .database.session import engine
+from .database.session import engine, AsyncSessionLocal
+
+logger = logging.getLogger("backend.main")
 
 app = FastAPI(title="ParkZenith API", debug=settings.DEBUG)
 
+# Configure CORS origins dynamically
+allowed_origins = [origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -31,6 +37,64 @@ async def shutdown_event():
 @app.get("/", tags=["health"])
 async def health_check():
     return {"message": "ParkZenith API Running"}
+
+
+@app.get("/health", tags=["health"])
+async def health():
+    """Lightweight check to see if the API process is alive."""
+    return {
+        "status": "HEALTHY",
+        "service": settings.PROJECT_NAME,
+        "environment": settings.ENVIRONMENT,
+    }
+
+
+@app.get("/ready", tags=["health"])
+async def readiness_check(response: Response):
+    """Verifies backend connectivity to database and the AI Service."""
+    db_connected = False
+    ai_service_connected = False
+
+    # 1. Database Check
+    try:
+        from sqlalchemy import text
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("SELECT 1"))
+        db_connected = True
+    except Exception as exc:
+        logger.error("Readiness check database connection failure: %s", str(exc))
+
+    # 2. AI Service Check
+    if not settings.AI_SERVICE_ENABLED:
+        ai_service_connected = True
+    else:
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                res = await client.get(f"{settings.AI_SERVICE_URL.rstrip('/')}/health")
+                if res.status_code == 200:
+                    ai_service_connected = True
+                else:
+                    logger.warning("AI Service health check returned HTTP %d", res.status_code)
+        except Exception as exc:
+            logger.error("Readiness check AI Service connection failure: %s", str(exc))
+
+    if db_connected and ai_service_connected:
+        status_str = "READY"
+    elif db_connected or ai_service_connected:
+        status_str = "DEGRADED"
+    else:
+        status_str = "NOT_READY"
+
+    if status_str == "NOT_READY":
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    elif status_str == "DEGRADED":
+        response.status_code = status.HTTP_200_OK
+
+    return {
+        "status": status_str,
+        "database": "CONNECTED" if db_connected else "DISCONNECTED",
+        "ai_service": "CONNECTED" if ai_service_connected else "DISCONNECTED",
+    }
 
 
 # Include API routers

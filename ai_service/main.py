@@ -6,7 +6,7 @@ Phase 1: Data Collection Pipeline
 from contextlib import asynccontextmanager
 import logging
 from typing import AsyncGenerator, Dict, Any
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from ai_service.config.settings import settings
