@@ -55,4 +55,14 @@ class MetricsRegistry:
             summary["avg_ai_service_latency"] = round(sum(self.ai_service_latencies) / len(self.ai_service_latencies), 2) if self.ai_service_latencies else 0.0
             return summary
 
+    def reset(self):
+        with self._lock:
+            self.request_counts.clear()
+            self.request_latencies.clear()
+            self.error_counts.clear()
+            self.ai_service_latencies.clear()
+            self.ai_service_failures = 0
+            self.db_failures = 0
+            self.prediction_failures = 0
+
 metrics = MetricsRegistry()
