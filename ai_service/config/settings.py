@@ -4,7 +4,7 @@ Reads configuration from environment variables or .env file.
 """
 
 from typing import Optional
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -102,6 +102,15 @@ class Settings(BaseSettings):
     RECOMMENDATION_WEIGHT_HISTORICAL_UTILIZATION: float = Field(default=0.05)
     RECOMMENDATION_WEIGHT_PARKING_COST: float = Field(default=0.05)
     RECOMMENDATION_WEIGHT_QUEUE_CONGESTION: float = Field(default=0.05)
+
+    @model_validator(mode="after")
+    def validate_production_settings(self) -> "Settings":
+        if self.ENVIRONMENT == "production":
+            if self.BACKEND_API_KEY and self.BACKEND_API_KEY in ("default_key", "backend-api-key", ""):
+                raise ValueError("BACKEND_API_KEY must be configured with a secure value in production!")
+            # Force DB echo off in production
+            self.DB_ECHO = False
+        return self
 
 
 settings = Settings()
