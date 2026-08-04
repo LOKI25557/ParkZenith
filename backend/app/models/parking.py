@@ -19,7 +19,7 @@ class ParkingSlot(Base):
     __tablename__ = "parking_slots"
 
     id = Column(Integer, primary_key=True, index=True)
-    facility_id = Column(Integer, ForeignKey("parking_facilities.id"), nullable=False)
+    facility_id = Column(Integer, ForeignKey("parking_facilities.id"), nullable=False, index=True)
     slot_number = Column(String(50), nullable=False)
     is_available = Column(Boolean, default=True)
 

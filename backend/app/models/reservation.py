@@ -15,11 +15,11 @@ class Reservation(Base):
     __tablename__ = "reservations"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    slot_id = Column(Integer, ForeignKey("parking_slots.id"), nullable=False)
-    start_time = Column(DateTime(timezone=True), nullable=False)
-    end_time = Column(DateTime(timezone=True), nullable=False)
-    status = Column(Enum(ReservationStatus), default=ReservationStatus.PENDING)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    slot_id = Column(Integer, ForeignKey("parking_slots.id"), nullable=False, index=True)
+    start_time = Column(DateTime(timezone=True), nullable=False, index=True)
+    end_time = Column(DateTime(timezone=True), nullable=False, index=True)
+    status = Column(Enum(ReservationStatus), default=ReservationStatus.PENDING, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User")
