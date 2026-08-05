@@ -39,4 +39,4 @@ EXPOSE 8001
 ENV ENVIRONMENT=production
 ENV PORT=8001
 
-CMD ["uvicorn", "ai_service.main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["uvicorn", "ai_service.main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "2"]
