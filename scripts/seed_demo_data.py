@@ -6,6 +6,7 @@ Simulates high/low occupancy, peak/off-peak hours, reservation activity, and que
 
 import asyncio
 import logging
+import os
 import random
 from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
@@ -13,7 +14,9 @@ from passlib.context import CryptContext
 # Database utilities
 from sqlalchemy import delete, text
 
-# Backend Database imports
+# --- 1. Set Backend DB Environment and Import Backend Modules ---
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./backend.db"
+
 from backend.app.database.base import Base as BackendBase
 from backend.app.database.session import engine as backend_engine
 from backend.app.database.session import AsyncSessionLocal as BackendSessionLocal
@@ -23,7 +26,16 @@ from backend.app.models.reservation import Reservation as BackendReservation, Re
 from backend.app.models.session import ParkingSession as BackendSession
 from backend.app.models.payment import Payment as BackendPayment
 
-# AI Service Database imports
+# --- 2. Set AI Service DB Environment and Import AI Service Modules ---
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./ai_service.db"
+
+# Force settings to reload with new DATABASE_URL if it was imported elsewhere
+import sys
+if "ai_service.config.settings" in sys.modules:
+    del sys.modules["ai_service.config.settings"]
+if "ai_service.database.session" in sys.modules:
+    del sys.modules["ai_service.database.session"]
+
 from ai_service.database.base import Base as AIBase
 from ai_service.database.session import engine as ai_engine
 from ai_service.database.session import AsyncSessionFactory as AISessionLocal
@@ -326,6 +338,7 @@ async def seed_ai_service():
                 parking_fee=random.uniform(5.0, 25.0),
             )
             session_records.append(rec)
+        session_records.append(rec)
         session.add_all(session_records)
 
         await session.commit()
