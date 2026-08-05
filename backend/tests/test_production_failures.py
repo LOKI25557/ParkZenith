@@ -90,3 +90,23 @@ class TestProductionFailures(unittest.IsolatedAsyncioTestCase):
                 
                 self.assertEqual(data["prediction_status"], "DEGRADED_FALLBACK")
                 self.assertEqual(data["facility_id"], "1")
+
+    async def test_ai_service_invalid_json_response_triggers_fallback(self):
+        """Simulate AI Service returning malformed/invalid JSON, which should be caught and fallback triggered."""
+        original_request = httpx.AsyncClient.request
+
+        async def mock_request(client_self, method, url, *args, **kwargs):
+            if "localhost:8001" in str(url) or "ai-service" in str(url):
+                # Return non-JSON response with HTTP 200 status code
+                return httpx.Response(status_code=200, content=b"Invalid JSON data from AI service")
+            return await original_request(client_self, method, url, *args, **kwargs)
+        
+        with patch("httpx.AsyncClient.request", side_effect=mock_request, autospec=True):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+                resp = await ac.get("/prediction/occupancy/1?horizon_minutes=15")
+                self.assertEqual(resp.status_code, 200)
+                data = resp.json()
+                
+                self.assertEqual(data["prediction_status"], "DEGRADED_FALLBACK")
+                self.assertEqual(data["facility_id"], 1)
+
