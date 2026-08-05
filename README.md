@@ -137,6 +137,25 @@ Academic Smart City Project focusing on:
 
 ---
 
+## 📊 Seeding and Resetting Demo Data
+
+To populate the local SQLite databases (or production PostgreSQL instances) with realistic, privacy-compliant synthetic data for testing:
+
+1. **Reset and Seed**:
+   Run the seeding script from the project root directory:
+   ```bash
+   python -m scripts.seed_demo_data
+   ```
+   This script will automatically:
+   - Create any missing tables in both the backend and AI service databases.
+   - Delete all existing records (resetting the environment).
+   - Generate realistic user accounts, facilities, slots, reservations, payments, and 7 days of time-series occupancy/session telemetry logs (incorporating diurnal commuting peaks, off-peaks, and queue congestion conditions).
+
+2. **Database URLs**:
+   The script loads configuration dynamically using the `DATABASE_URL` settings. To run it against a production PostgreSQL container or local cluster, verify that the environment variables are set correctly (e.g. `DATABASE_URL=postgresql+asyncpg://...`).
+
+---
+
 ## 📜 License
 
 This project is being developed for educational and research purposes.

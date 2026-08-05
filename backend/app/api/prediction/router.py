@@ -62,7 +62,7 @@ def handle_client_response(res: dict):
         message = err.get("message", "AI Service encountered an error.")
         status_code = err.get("status_code", 500)
 
-        if code in ("AI_SERVICE_UNAVAILABLE", "AI_SERVICE_TIMEOUT", "MODEL_UNAVAILABLE"):
+        if code in ("AI_SERVICE_UNAVAILABLE", "AI_SERVICE_TIMEOUT", "MODEL_UNAVAILABLE", "AI_SERVICE_INVALID_RESPONSE"):
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=message)
         elif code in ("MISSING_FACILITY", "EMPTY_DATASET"):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message)
@@ -96,8 +96,8 @@ async def get_occupancy_forecast(
     res = await ai_service_client.get_occupancy_prediction(facility_id, horizon_minutes)
     if not res.get("success", False):
         code = res.get("error", {}).get("code")
-        if code in ("AI_SERVICE_UNAVAILABLE", "AI_SERVICE_TIMEOUT", "AI_SERVICE_DISABLED", "MODEL_UNAVAILABLE"):
-            logger.warning("AI Service unavailable. Activating DB fallback for facility %d occupancy.", facility_id)
+        if code in ("AI_SERVICE_UNAVAILABLE", "AI_SERVICE_TIMEOUT", "AI_SERVICE_DISABLED", "MODEL_UNAVAILABLE", "AI_SERVICE_INVALID_RESPONSE"):
+            logger.warning("AI Service unavailable or malformed. Activating DB fallback for facility %d occupancy.", facility_id)
             current_occ, _, _ = await db_fallback_occupancy(db, facility_id)
             fallback_res = {
                 "facility_id": facility_id,
@@ -134,8 +134,8 @@ async def get_availability_forecast(
     res = await ai_service_client.get_availability_prediction(facility_id, eta_minutes)
     if not res.get("success", False):
         code = res.get("error", {}).get("code")
-        if code in ("AI_SERVICE_UNAVAILABLE", "AI_SERVICE_TIMEOUT", "AI_SERVICE_DISABLED", "MODEL_UNAVAILABLE"):
-            logger.warning("AI Service unavailable. Activating DB fallback for facility %s availability.", facility_id)
+        if code in ("AI_SERVICE_UNAVAILABLE", "AI_SERVICE_TIMEOUT", "AI_SERVICE_DISABLED", "MODEL_UNAVAILABLE", "AI_SERVICE_INVALID_RESPONSE"):
+            logger.warning("AI Service unavailable or malformed. Activating DB fallback for facility %s availability.", facility_id)
             fid = int(facility_id) if facility_id.isdigit() else 1
             current_occ, total_slots, occupied_slots = await db_fallback_occupancy(db, fid)
             expected_free = total_slots - occupied_slots

@@ -121,8 +121,19 @@ class AIServiceClient:
                         }
 
                     metrics.record_ai_latency(duration_ms, success=True)
-                    data = response.json()
-                    return {"success": True, "data": data}
+                    try:
+                        data = response.json()
+                        return {"success": True, "data": data}
+                    except ValueError as exc:
+                        logger.error("AI Service returned invalid JSON on path %s: %s", path, response.text)
+                        return {
+                            "success": False,
+                            "error": {
+                                "code": "AI_SERVICE_INVALID_RESPONSE",
+                                "message": "The AI Service returned an invalid or malformed response.",
+                            },
+                        }
+
 
             except httpx.TimeoutException as exc:
                 duration_ms = (time.time() - start_time) * 1000
