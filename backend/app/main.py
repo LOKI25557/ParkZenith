@@ -234,7 +234,152 @@ async def readiness_check(response: Response):
     }
 
 
+
+# E2E & Data Sync API Endpoints
+from datetime import datetime, timezone, timedelta
+from typing import List, Optional
+from pydantic import BaseModel
+from fastapi import Depends
+from sqlalchemy import select, func, and_
+from sqlalchemy.ext.asyncio import AsyncSession
+from backend.app.database.session import get_async_session
+from backend.app.models.parking import ParkingFacility, ParkingSlot
+from backend.app.models.reservation import Reservation, ReservationStatus
+from backend.app.models.session import ParkingSession
+
+class E2EReservationCreate(BaseModel):
+    slot_id: int
+    start_time: datetime
+    end_time: datetime
+
+# 1. Occupancy History Sync
+@app.get("/occupancy/history")
+@app.get("/api/v1/occupancy/history")
+async def get_occupancy_history(limit: int = 500, db: AsyncSession = Depends(get_async_session)):
+    stmt = select(ParkingFacility)
+    facilities = (await db.execute(stmt)).scalars().all()
+    history = []
+    
+    for f in facilities:
+        total_stmt = select(func.count(ParkingSlot.id)).where(ParkingSlot.facility_id == f.id)
+        occ_stmt = select(func.count(ParkingSlot.id)).where(
+            and_(ParkingSlot.facility_id == f.id, ParkingSlot.is_available == False)
+        )
+        total_slots = (await db.execute(total_stmt)).scalar() or 0
+        occupied_slots = (await db.execute(occ_stmt)).scalar() or 0
+        available_slots = total_slots - occupied_slots
+        occ_pct = (occupied_slots / total_slots * 100.0) if total_slots > 0 else 0.0
+        
+        history.append({
+            "facility_id": str(f.id),
+            "zone_id": None,
+            "total_slots": total_slots,
+            "occupied_slots": occupied_slots,
+            "available_slots": available_slots,
+            "occupancy_percentage": round(occ_pct, 2),
+            "collected_at": datetime.now(timezone.utc).isoformat()
+        })
+    return history
+
+# 2. Reservation History Sync
+@app.get("/reservations/history")
+@app.get("/api/v1/reservations/history")
+async def get_reservations_history(limit: int = 500, db: AsyncSession = Depends(get_async_session)):
+    stmt = select(Reservation).limit(limit)
+    reservations = (await db.execute(stmt)).scalars().all()
+    history = []
+    
+    for r in reservations:
+        duration = (r.end_time - r.start_time).total_seconds() / 60.0
+        status_val = "COMPLETED"
+        if r.status == ReservationStatus.CANCELLED:
+            status_val = "CANCELLED"
+        elif r.status == ReservationStatus.PENDING:
+            status_val = "PENDING"
+            
+        history.append({
+            "reservation_id": f"RES-{r.id}",
+            "facility_id": "1", # default facility link for simplicity
+            "slot_id": f"SLOT-{r.slot_id}",
+            "reservation_status": status_val,
+            "reservation_start": r.start_time.isoformat(),
+            "reservation_end": r.end_time.isoformat(),
+            "duration_minutes": round(duration, 2),
+            "collected_at": r.created_at.isoformat() if r.created_at else datetime.now(timezone.utc).isoformat()
+        })
+    return history
+
+# 3. Session History Sync
+@app.get("/sessions/history")
+@app.get("/api/v1/sessions/history")
+async def get_sessions_history(limit: int = 500, db: AsyncSession = Depends(get_async_session)):
+    stmt = select(ParkingSession).limit(limit)
+    sessions = (await db.execute(stmt)).scalars().all()
+    history = []
+    
+    for s in sessions:
+        duration = 0.0
+        if s.ended_at and s.started_at:
+            duration = (s.ended_at - s.started_at).total_seconds() / 60.0
+            
+        history.append({
+            "session_id": f"SESS-{s.id}",
+            "facility_id": "1",
+            "vehicle_type": "CAR",
+            "check_in_time": s.started_at.isoformat(),
+            "check_out_time": s.ended_at.isoformat() if s.ended_at else None,
+            "duration_minutes": round(duration, 2),
+            "parking_fee": round(s.fee, 2),
+            "collected_at": s.started_at.isoformat()
+        })
+    return history
+
+# 4. E2E Slot Reservation
+@app.post("/reservations")
+@app.post("/api/v1/reservations")
+async def create_e2e_reservation(req: E2EReservationCreate, db: AsyncSession = Depends(get_async_session)):
+    from backend.app.core.dependencies import get_current_user
+    # Fetch a dummy/fallback user since auth is optional in local testing
+    from backend.app.models.user import User
+    user_stmt = select(User).limit(1)
+    user = (await db.execute(user_stmt)).scalar()
+    if not user:
+        # Create user if not exists
+        user = User(full_name="E2E Test User", email="e2e-tester@parkzenith.com", hashed_password="hashedpassword", is_active=True)
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        
+    reservation = Reservation(
+        user_id=user.id,
+        slot_id=req.slot_id,
+        start_time=req.start_time,
+        end_time=req.end_time,
+        status=ReservationStatus.CONFIRMED
+    )
+    db.add(reservation)
+    
+    # Mark the slot as occupied
+    slot_stmt = select(ParkingSlot).where(ParkingSlot.id == req.slot_id)
+    slot = (await db.execute(slot_stmt)).scalar()
+    if slot:
+        slot.is_available = False
+        db.add(slot)
+        
+    await db.commit()
+    await db.refresh(reservation)
+    return {
+        "id": reservation.id,
+        "user_id": reservation.user_id,
+        "slot_id": reservation.slot_id,
+        "start_time": reservation.start_time.isoformat(),
+        "end_time": reservation.end_time.isoformat(),
+        "status": reservation.status.value
+    }
+
+
 # Include API routers
+
 app.include_router(api_router)
 
 
