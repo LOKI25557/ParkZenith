@@ -395,6 +395,63 @@ class AIServiceClient:
         }
         return await self._make_request("POST", "/intelligence/decision", json_data=payload)
 
+    # --- Heatmap Intelligence Pipeline ---
+    async def get_heatmap(self) -> Dict[str, Any]:
+        """
+        Retrieves live overview heatmap.
+        """
+        return await self._make_request("GET", "/heatmap")
+
+    async def get_heatmap_live(self) -> Dict[str, Any]:
+        """
+        Retrieves live heatmap details.
+        """
+        return await self._make_request("GET", "/heatmap/live")
+
+    async def get_heatmap_history(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        interval: str = "hourly",
+        facility_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Retrieves resampled historical heatmap data.
+        """
+        params = {"interval": interval}
+        if start_date:
+            params["start_date"] = start_date
+        if end_date:
+            params["end_date"] = end_date
+        if facility_id:
+            params["facility_id"] = facility_id
+        return await self._make_request("GET", "/heatmap/history", params=params)
+
+    async def get_heatmap_zones(
+        self,
+        facility_id: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Retrieves zone density and congestion analytics.
+        """
+        params = {}
+        if facility_id:
+            params["facility_id"] = facility_id
+        if start_date:
+            params["start_date"] = start_date
+        if end_date:
+            params["end_date"] = end_date
+        return await self._make_request("GET", "/heatmap/zones", params=params)
+
+    async def get_heatmap_facility(self, facility_id: str) -> Dict[str, Any]:
+        """
+        Retrieves real-time heatmap metrics for a single facility.
+        """
+        return await self._make_request("GET", f"/heatmap/facility/{facility_id}")
+
 
 # Singleton client instance
 ai_service_client = AIServiceClient()
+
