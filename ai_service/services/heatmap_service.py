@@ -312,8 +312,13 @@ class HeatmapService:
             fac_capacity = fac_meta.get("total_slots", 100)
 
             # Average occupancy
-            avg_occupied = float(fac_df["occupied_slots"].mean())
-            avg_total = float(fac_df["total_slots"].mean())
+            fac_overall_df = fac_df[fac_df["zone_id"].isna() | (fac_df["zone_id"] == "")]
+            if fac_overall_df.empty:
+                fac_overall_df = fac_df
+
+            avg_occupied = float(fac_overall_df["occupied_slots"].mean())
+            avg_total = float(fac_overall_df["total_slots"].mean())
+
             if pd.isna(avg_total) or avg_total <= 0:
                 avg_total = fac_capacity
             if pd.isna(avg_occupied):
@@ -499,7 +504,8 @@ class HeatmapService:
         df["collected_at"] = pd.to_datetime(df["collected_at"]).dt.tz_localize(None)
 
         # Separate zone data
-        zone_df = df[df["zone_id"].notna() & (df["zone_id"] != "")]
+        zone_df = df[df["zone_id"].notna() & (df["zone_id"] != "")].copy()
+
         
         # If database only contains facility records, use hypothetical split
         if zone_df.empty:
