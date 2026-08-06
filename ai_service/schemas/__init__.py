@@ -37,6 +37,16 @@ from ai_service.schemas.preprocessing import (
     DatasetExportResponse,
     DatasetInfoResponse,
 )
+from ai_service.schemas.heatmap import (
+    HeatmapPoint,
+    ZoneDensity,
+    CongestionScore,
+    FacilityHeatmap,
+    LiveHeatmap,
+    HistoricalHeatmap,
+    ZoneAnalyticsResponse,
+    PeakCongestionPeriod,
+)
 
 __all__ = [
     "OccupancyHistoryCreate",
@@ -61,5 +71,14 @@ __all__ = [
     "FeaturesSummaryResponse",
     "DatasetExportResponse",
     "DatasetInfoResponse",
+    "HeatmapPoint",
+    "ZoneDensity",
+    "CongestionScore",
+    "FacilityHeatmap",
+    "LiveHeatmap",
+    "HistoricalHeatmap",
+    "ZoneAnalyticsResponse",
+    "PeakCongestionPeriod",
 ]
+
 

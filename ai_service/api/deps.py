@@ -17,6 +17,7 @@ from ai_service.services.forecasting_service import ForecastingService
 from ai_service.services.availability_service import AvailabilityService
 from ai_service.services.recommendation_service import RecommendationService
 from ai_service.services.queue_service import QueueService
+from ai_service.services.heatmap_service import HeatmapService
 
 
 
@@ -29,6 +30,7 @@ _preprocessing_service = PreprocessingService()
 _forecasting_service = ForecastingService()
 _availability_service = AvailabilityService(forecasting_service=_forecasting_service)
 _queue_service = QueueService()
+_heatmap_service = HeatmapService()
 _recommendation_service = RecommendationService(
     forecasting_service=_forecasting_service,
     availability_service=_availability_service,
@@ -100,6 +102,14 @@ def get_recommendation_service() -> RecommendationService:
     Dependency provider for RecommendationService instance.
     """
     return _recommendation_service
+
+
+def get_heatmap_service() -> HeatmapService:
+    """
+    Dependency provider for HeatmapService instance.
+    """
+    return _heatmap_service
+
 
 
 
