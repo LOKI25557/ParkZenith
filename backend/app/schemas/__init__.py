@@ -6,6 +6,16 @@ from .user import (
     Token,
     TokenData,
 )
+from .heatmap import (
+    HeatmapPointSchema,
+    ZoneDensitySchema,
+    CongestionScoreSchema,
+    FacilityHeatmapSchema,
+    LiveHeatmapSchema,
+    HistoricalHeatmapSchema,
+    ZoneAnalyticsSchema,
+    PeakCongestionPeriodSchema,
+)
 
 __all__ = [
     "UserCreate",
@@ -14,4 +24,13 @@ __all__ = [
     "UserResponse",
     "Token",
     "TokenData",
+    "HeatmapPointSchema",
+    "ZoneDensitySchema",
+    "CongestionScoreSchema",
+    "FacilityHeatmapSchema",
+    "LiveHeatmapSchema",
+    "HistoricalHeatmapSchema",
+    "ZoneAnalyticsSchema",
+    "PeakCongestionPeriodSchema",
 ]
+
