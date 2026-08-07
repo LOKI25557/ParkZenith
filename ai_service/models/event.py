@@ -34,6 +34,16 @@ class Event(Base):
         DateTime(timezone=True), nullable=False, default=current_utc_time
     )
 
+    @property
+    def location(self) -> dict:
+        """Helper property to map flat DB columns to nested location schema."""
+        return {
+            "name": self.location_name,
+            "latitude": self.latitude,
+            "longitude": self.longitude,
+            "radius_of_influence": self.radius_of_influence
+        }
+
     __table_args__ = (
         Index("idx_events_time_range", "start_time", "end_time"),
         Index("idx_events_type_time", "type", "start_time"),
