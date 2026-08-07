@@ -47,6 +47,17 @@ from ai_service.schemas.heatmap import (
     ZoneAnalyticsResponse,
     PeakCongestionPeriod,
 )
+from ai_service.schemas.event import (
+    EventLocation,
+    Event,
+    EventCreate,
+    EventUpdate,
+    EventImpact,
+    EventForecast,
+    EventRecommendation,
+    EventAnalytics,
+    EventSimulation,
+)
 
 __all__ = [
     "OccupancyHistoryCreate",
@@ -79,6 +90,15 @@ __all__ = [
     "HistoricalHeatmap",
     "ZoneAnalyticsResponse",
     "PeakCongestionPeriod",
+    "EventLocation",
+    "Event",
+    "EventCreate",
+    "EventUpdate",
+    "EventImpact",
+    "EventForecast",
+    "EventRecommendation",
+    "EventAnalytics",
+    "EventSimulation",
 ]
 
 

@@ -25,6 +25,7 @@ from ai_service.api.recommendation_routes import router as recommendation_router
 from ai_service.api.queue_routes import router as queue_router
 from ai_service.api.intelligence_routes import router as intelligence_router
 from ai_service.api.heatmap_routes import router as heatmap_router
+from ai_service.api.event_routes import router as event_router
 
 
 
@@ -148,6 +149,7 @@ app.include_router(recommendation_router)
 app.include_router(queue_router)
 app.include_router(intelligence_router)
 app.include_router(heatmap_router)
+app.include_router(event_router)
 
 
 

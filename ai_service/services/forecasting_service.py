@@ -244,12 +244,31 @@ class ForecastingService:
         h_str = str(primary_horizon_minutes)
         confidence = metrics.get(h_str, {}).get("confidence", 95.0)
 
+        # Apply event adjustments
+        try:
+            from datetime import datetime, timezone, timedelta
+            from ai_service.services.event_service import EventIntelligenceService
+            event_service = EventIntelligenceService()
+            fid_str = str(facility_id)
+            now_utc = datetime.now(timezone.utc)
+
+            comp_15 = await event_service.get_composite_impact(db, fid_str, now_utc + timedelta(minutes=15))
+            pred_15 = min(100.0, max(0.0, pred_15 + comp_15.get("composite_extra_occupancy_percentage", 0.0)))
+
+            comp_30 = await event_service.get_composite_impact(db, fid_str, now_utc + timedelta(minutes=30))
+            pred_30 = min(100.0, max(0.0, pred_30 + comp_30.get("composite_extra_occupancy_percentage", 0.0)))
+
+            comp_60 = await event_service.get_composite_impact(db, fid_str, now_utc + timedelta(minutes=60))
+            pred_60 = min(100.0, max(0.0, pred_60 + comp_60.get("composite_extra_occupancy_percentage", 0.0)))
+        except Exception as e:
+            logger.warning("Failed to apply event adjustments to forecast snapshot: %s", str(e))
+
         return {
             "facility_id": facility_id,
             "current_occupancy": current_occ,
-            "prediction_15": pred_15,
-            "prediction_30": pred_30,
-            "prediction_60": pred_60,
+            "prediction_15": round(pred_15, 2),
+            "prediction_30": round(pred_30, 2),
+            "prediction_60": round(pred_60, 2),
             "confidence": round(confidence, 2),
             "prediction_status": "SUCCESS"
         }
@@ -319,10 +338,23 @@ class ForecastingService:
 
         confidence = meta.get("metrics", {}).get("confidence", 95.0)
 
+        # Apply event adjustments
+        try:
+            from datetime import datetime, timezone, timedelta
+            from ai_service.services.event_service import EventIntelligenceService
+            event_service = EventIntelligenceService()
+            fid_str = str(facility_id)
+            now_utc = datetime.now(timezone.utc)
+
+            comp_custom = await event_service.get_composite_impact(db, fid_str, now_utc + timedelta(minutes=target_minutes))
+            pred = min(100.0, max(0.0, pred + comp_custom.get("composite_extra_occupancy_percentage", 0.0)))
+        except Exception as e:
+            logger.warning("Failed to apply event adjustments to custom forecast: %s", str(e))
+
         return {
             "facility_id": facility_id,
             "current_occupancy": current_occ,
-            "prediction_custom": pred,
+            "prediction_custom": round(pred, 2),
             "confidence": round(confidence, 2),
             "prediction_status": "SUCCESS"
         }
