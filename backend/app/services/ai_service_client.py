@@ -451,6 +451,96 @@ class AIServiceClient:
         """
         return await self._make_request("GET", f"/heatmap/facility/{facility_id}")
 
+    # --- Event Intelligence Operations ---
+    async def get_events(
+        self, skip: int = 0, limit: int = 100, type_filter: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Retrieves all registered events from AI service.
+        """
+        params = {"skip": skip, "limit": limit}
+        if type_filter:
+            params["type_filter"] = type_filter
+        return await self._make_request("GET", "/events", params=params)
+
+    async def create_event(self, event_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Registers a new external event.
+        """
+        return await self._make_request("POST", "/events", json_data=event_data)
+
+    async def update_event(self, event_id: str, event_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Updates an existing event.
+        """
+        return await self._make_request("PUT", f"/events/{event_id}", json_data=event_data)
+
+    async def delete_event(self, event_id: str) -> Dict[str, Any]:
+        """
+        Deletes a registered event.
+        """
+        return await self._make_request("DELETE", f"/events/{event_id}")
+
+    async def get_upcoming_events(self) -> Dict[str, Any]:
+        """
+        Retrieves upcoming events.
+        """
+        return await self._make_request("GET", "/events/upcoming")
+
+    async def get_active_events(self) -> Dict[str, Any]:
+        """
+        Retrieves active events.
+        """
+        return await self._make_request("GET", "/events/active")
+
+    async def get_event_impact(self, event_id: str) -> Dict[str, Any]:
+        """
+        Retrieves impact of a single event on facilities.
+        """
+        return await self._make_request("GET", f"/events/{event_id}/impact")
+
+    async def get_event_forecast(self, facility_id: str, horizon_minutes: int) -> Dict[str, Any]:
+        """
+        Retrieves event-adjusted occupancy forecasting snapshot.
+        """
+        params = {"facility_id": facility_id, "horizon_minutes": horizon_minutes}
+        return await self._make_request("GET", "/events/forecast", params=params)
+
+    async def get_event_recommendations(
+        self,
+        latitude: float,
+        longitude: float,
+        eta_minutes: int = 20,
+        destination_latitude: Optional[float] = None,
+        destination_longitude: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        Retrieves event-adjusted Smart Recommendations.
+        """
+        params = {
+            "user_latitude": latitude,
+            "user_longitude": longitude,
+            "eta_minutes": eta_minutes,
+        }
+        if destination_latitude is not None:
+            params["destination_latitude"] = destination_latitude
+        if destination_longitude is not None:
+            params["destination_longitude"] = destination_longitude
+        return await self._make_request("GET", "/events/recommendations", params=params)
+
+    async def run_event_simulation(self, simulation_name: str) -> Dict[str, Any]:
+        """
+        Seeds simulator events.
+        """
+        params = {"simulation_name": simulation_name}
+        return await self._make_request("POST", "/events/simulations", params=params)
+
+    async def get_event_analytics(self) -> Dict[str, Any]:
+        """
+        Retrieves Event Analytics.
+        """
+        return await self._make_request("GET", "/events/analytics")
+
 
 # Singleton client instance
 ai_service_client = AIServiceClient()
