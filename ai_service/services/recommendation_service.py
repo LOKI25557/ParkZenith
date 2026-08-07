@@ -267,6 +267,40 @@ class RecommendationService:
             max_results=max_results,
         )
 
+        # 6. Apply event adjustments to recommendation scores and reasons
+        try:
+            from datetime import datetime, timezone, timedelta
+            from ai_service.services.event_service import EventIntelligenceService
+            event_service = EventIntelligenceService()
+            target_time = datetime.now(timezone.utc) + timedelta(minutes=eta_minutes)
+
+            adjusted_recs = []
+            for item in recommendation_results.get("recommendations", []):
+                fid = str(item["facility_id"])
+                composite = await event_service.get_composite_impact(db, fid, target_time)
+                cong_mult = composite.get("composite_congestion_multiplier", 1.0)
+                
+                # Penalty to recommendation score
+                item["recommendation_score"] = round(float(item["recommendation_score"]) / cong_mult, 1)
+                
+                # Update reasoning and suggest earlier arrivals
+                if composite["events_count"] > 0:
+                    dominant_name = composite["dominant_event_name"]
+                    item["reason"] = f"Heavy congestion expected due to nearby event: {dominant_name}. " + item["reason"]
+                    # If high risk or severe congestion, update occupancy risk
+                    if composite["expected_congestion_level"] in ("HIGH", "SEVERE"):
+                        item["occupancy_risk"] = "HIGH"
+
+                adjusted_recs.append(item)
+
+            # Re-sort recommendations by score descending and update ranks
+            adjusted_recs = sorted(adjusted_recs, key=lambda x: x["recommendation_score"], reverse=True)
+            for idx, item in enumerate(adjusted_recs):
+                item["rank"] = idx + 1
+            recommendation_results["recommendations"] = adjusted_recs
+        except Exception as e:
+            logger.warning("Failed to apply event adjustments to recommendations list: %s", str(e))
+
         return recommendation_results
 
     async def get_facility_recommendation_detail(
