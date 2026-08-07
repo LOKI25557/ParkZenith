@@ -209,17 +209,72 @@ class QueueService:
         if self.virtual_queue_manager and hasattr(self.virtual_queue_manager, "_queues"):
             actual_queue_length = len(self.virtual_queue_manager._queues.get(facility_id, []))
 
+        # Query event adjustments
+        avg_arrivals_adjusted = avg_arrivals_per_hour
+        avg_departures_adjusted = avg_departures_per_hour
+        
+        try:
+            from datetime import datetime, timezone, timedelta
+            from ai_service.services.event_service import EventIntelligenceService
+            event_service = EventIntelligenceService()
+            target_time = datetime.now(timezone.utc) + timedelta(minutes=eta_minutes)
+            
+            active_events = await event_service.get_active_events(db, target_time)
+            for event in active_events:
+                # Scale arrival/departure rates during peaks
+                # Inflow peak: 2 hours before event start
+                inflow_start = event.start_time - timedelta(hours=2)
+                inflow_end = event.start_time + timedelta(minutes=30)
+                if inflow_start <= target_time <= inflow_end:
+                    scale = min(3.0, max(1.0, event.expected_attendance / 10000.0))
+                    avg_arrivals_adjusted *= scale
+                    
+                # Outflow peak: event end to 2 hours after
+                outflow_start = event.end_time
+                outflow_end = event.end_time + timedelta(hours=2)
+                if outflow_start <= target_time <= outflow_end:
+                    scale = min(3.0, max(1.0, event.expected_attendance / 10000.0))
+                    avg_departures_adjusted *= scale
+        except Exception as e:
+            logger.warning("Failed to calculate event peaks for queue service: %s", str(e))
+
         # 5. Process everything through the QueueEngine
         result = self.queue_engine.process(
             facility_id=facility_id,
             capacity=capacity,
             occupied_slots=occupied_slots,
-            arrival_rate_per_hour=avg_arrivals_per_hour,
-            departure_rate_per_hour=avg_departures_per_hour,
+            arrival_rate_per_hour=avg_arrivals_adjusted,
+            departure_rate_per_hour=avg_departures_adjusted,
             eta_minutes=eta_minutes,
             session_data_count=session_data_count,
             has_reservations=has_reservations,
             actual_queue_length=actual_queue_length,
         )
+
+        # 6. Apply composite event congestion/wait adjustments
+        try:
+            from datetime import datetime, timezone, timedelta
+            from ai_service.services.event_service import EventIntelligenceService
+            event_service = EventIntelligenceService()
+            target_time = datetime.now(timezone.utc) + timedelta(minutes=eta_minutes)
+            composite = await event_service.get_composite_impact(db, facility_id, target_time)
+            
+            cong_mult = composite.get("composite_congestion_multiplier", 1.0)
+            wait_inc = composite.get("composite_queue_wait_increase_minutes", 0.0)
+            
+            result["expected_wait_minutes"] = round(result["expected_wait_minutes"] * cong_mult + wait_inc, 2)
+            result["predicted_queue_length"] = int(round(result["predicted_queue_length"] * cong_mult + wait_inc / 2.0))
+            
+            # Determine adjusted congestion level
+            if cong_mult >= 2.0:
+                result["congestion_level"] = "SEVERE"
+            elif cong_mult >= 1.5:
+                result["congestion_level"] = "HIGH"
+            elif cong_mult >= 1.2:
+                result["congestion_level"] = "MODERATE"
+            else:
+                result["congestion_level"] = "LOW"
+        except Exception as e:
+            logger.warning("Failed to apply event adjustments to queue result: %s", str(e))
 
         return result
