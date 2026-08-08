@@ -1,5 +1,6 @@
 import logging
 import math
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from fastapi import APIRouter, Query, HTTPException, status, Depends
 from sqlalchemy import select, func, and_
@@ -277,7 +278,6 @@ async def get_queue_metrics(
         code = res.get("error", {}).get("code")
         if code in ("AI_SERVICE_UNAVAILABLE", "AI_SERVICE_TIMEOUT", "AI_SERVICE_DISABLED", "MODEL_UNAVAILABLE"):
             logger.warning("AI Service unavailable. Activating DB fallback for facility %s queue.", facility_id)
-            from datetime import datetime, timezone
             fallback_res = {
                 "facility_id": facility_id,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -383,4 +383,136 @@ async def get_intelligence_decision(
 
     res_data = handle_client_response(res)
     cache.set(cache_key, res_data, 60)
+    return res_data
+
+
+@router.get("/dashboard")
+async def get_ai_dashboard(
+    facility_id: Optional[str] = Query(None),
+    zone_id: Optional[str] = Query(None),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    event_id: Optional[str] = Query(None),
+    eta_minutes: int = Query(20, ge=0),
+    latitude: Optional[float] = Query(None),
+    longitude: Optional[float] = Query(None),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """
+    Retrieve consolidated AI analytics dashboard from AI service, falling back gracefully to DB slots occupancy if down.
+    """
+    cache_key = f"dashboard:{facility_id}:{zone_id}:{start_date}:{end_date}:{event_id}:{eta_minutes}:{latitude}:{longitude}"
+    cached_val = cache.get(cache_key)
+    if cached_val is not None:
+        logger.info("Serving AI dashboard from cache")
+        return cached_val
+
+    res = await ai_service_client.get_ai_dashboard(
+        facility_id=facility_id,
+        zone_id=zone_id,
+        start_date=start_date,
+        end_date=end_date,
+        event_id=event_id,
+        eta_minutes=eta_minutes,
+        latitude=latitude,
+        longitude=longitude,
+    )
+
+    if not res.get("success", False):
+        code = res.get("error", {}).get("code")
+        if code in ("AI_SERVICE_UNAVAILABLE", "AI_SERVICE_TIMEOUT", "AI_SERVICE_DISABLED", "MODEL_UNAVAILABLE"):
+            logger.warning("AI Service unavailable. Activating DB fallback for consolidated AI dashboard.")
+            
+            fid = int(facility_id) if (facility_id and facility_id.isdigit()) else 1
+            current_occ, total_slots, occupied_slots = await db_fallback_occupancy(db, fid)
+            expected_free = total_slots - occupied_slots
+            
+            fallback_res = {
+                "occupancy": {
+                    "facility_id": str(fid),
+                    "current_occupancy": current_occ,
+                    "total_capacity": total_slots,
+                    "available_spaces": expected_free,
+                    "occupied_spaces": occupied_slots,
+                    "reserved_spaces": 0,
+                    "utilization_percentage": current_occ,
+                    "historical_occupancy": [],
+                    "peak_occupancy": current_occ,
+                    "peak_hours": [],
+                    "occupancy_trends": {}
+                },
+                "forecast": {
+                    "forecast_30m": current_occ,
+                    "forecast_60m": current_occ,
+                    "forecast_horizon": [],
+                    "confidence": 0.0,
+                    "expected_demand": current_occ,
+                    "expected_occupancy": current_occ,
+                    "peak_demand_window": None,
+                    "event_adjusted_forecast": None
+                },
+                "availability": {
+                    "arrival_availability_probability": round((expected_free / total_slots * 100.0) if total_slots > 0 else 100.0, 2),
+                    "eta_minutes": eta_minutes,
+                    "expected_occupancy_at_arrival": current_occ,
+                    "available_capacity": expected_free,
+                    "confidence": 0.0,
+                    "risk_level": "MEDIUM" if current_occ >= 70.0 else "LOW"
+                },
+                "recommendations": {
+                    "recommended_facilities": [],
+                    "summary_insights": ["AI Service is offline. Showing real-time database fallback occupancy."]
+                },
+                "queue": {
+                    "current_queue_estimate": 0,
+                    "predicted_waiting_time": 0.0,
+                    "congestion_level": "LOW",
+                    "queue_growth": 0.0,
+                    "peak_queue_period": None,
+                    "event_adjusted_queue_prediction": None
+                },
+                "heatmap": {
+                    "zone_congestion": [],
+                    "most_congested_zones": [],
+                    "least_congested_zones": [],
+                    "peak_congestion_period": None,
+                    "historical_comparison": {}
+                },
+                "events": {
+                    "active_events": [],
+                    "upcoming_events": [],
+                    "event_impact": {},
+                    "expected_demand_increase": 0.0,
+                    "affected_facilities": [],
+                    "congestion_risk": "LOW",
+                    "event_adjusted_occupancy": current_occ,
+                    "event_adjusted_queue_estimates": 0.0
+                },
+                "performance": {
+                    "prediction_accuracy": 0.0,
+                    "error_metrics": {},
+                    "confidence": 0.0,
+                    "forecast_performance": {},
+                    "availability_prediction_performance": {},
+                    "recommendation_performance": {},
+                    "queue_prediction_performance": {}
+                },
+                "insights": [
+                    {
+                        "type": "system",
+                        "severity": "WARNING",
+                        "message": "AI Service is offline. Aggregated predictions are unavailable."
+                    }
+                ],
+                "summary": {
+                    "status": "WARNING",
+                    "timestamp": datetime.now(timezone.utc),
+                    "total_facilities_monitored": 1
+                }
+            }
+            cache.set(cache_key, fallback_res, 10)
+            return fallback_res
+
+    res_data = handle_client_response(res)
+    cache.set(cache_key, res_data, 30)
     return res_data

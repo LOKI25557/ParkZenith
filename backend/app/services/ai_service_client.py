@@ -541,6 +541,37 @@ class AIServiceClient:
         """
         return await self._make_request("GET", "/events/analytics")
 
+    async def get_ai_dashboard(
+        self,
+        facility_id: Optional[str] = None,
+        zone_id: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        event_id: Optional[str] = None,
+        eta_minutes: int = 20,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        Retrieves the consolidated AI Dashboard Analytics.
+        """
+        params = {"eta_minutes": eta_minutes}
+        if facility_id is not None:
+            params["facility_id"] = facility_id
+        if zone_id is not None:
+            params["zone_id"] = zone_id
+        if start_date is not None:
+            params["start_date"] = start_date.isoformat()
+        if end_date is not None:
+            params["end_date"] = end_date.isoformat()
+        if event_id is not None:
+            params["event_id"] = event_id
+        if latitude is not None:
+            params["latitude"] = latitude
+        if longitude is not None:
+            params["longitude"] = longitude
+        return await self._make_request("GET", "/ai/dashboard", params=params)
+
 
 # Singleton client instance
 ai_service_client = AIServiceClient()
