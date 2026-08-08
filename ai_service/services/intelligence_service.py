@@ -107,11 +107,12 @@ class IntelligenceService:
 
         # 4. Recommendation Classification
         # GOOD_CHOICE, LIMITED, HIGH_DEMAND, UNLIKELY, UNKNOWN
-        if prob < 0.30:
+        current_occ_pct = avail_pred.get("current_occupancy", 0.0)
+        if prob < 0.30 or current_occ_pct >= 90.0:
             recommendation = "UNLIKELY"
-        elif risk == "HIGH" or congestion in ("HIGH", "SEVERE"):
+        elif risk == "HIGH" or congestion in ("HIGH", "SEVERE") or current_occ_pct >= 85.0:
             recommendation = "HIGH_DEMAND"
-        elif risk == "MEDIUM" or prob < 0.70 or congestion == "MODERATE":
+        elif risk == "MEDIUM" or prob < 0.70 or congestion == "MODERATE" or current_occ_pct >= 70.0:
             recommendation = "LIMITED"
         else:
             recommendation = "GOOD_CHOICE"
