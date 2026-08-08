@@ -20,6 +20,10 @@ from ai_service.schemas.event import (
     EventSimulation,
 )
 from ai_service.services.event_service import EventIntelligenceService
+from ai_service.services.event_impact_engine import EventImpactEngine
+from sqlalchemy import select
+from ai_service.models.occupancy import OccupancyHistory
+from ai_service.recommendation.weights import get_facility_metadata
 
 logger = logging.getLogger(__name__)
 

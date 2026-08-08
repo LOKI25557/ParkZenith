@@ -25,6 +25,23 @@ from ai_service.collectors.occupancy_collector import OccupancyCollector
 from ai_service.collectors.reservation_collector import ReservationCollector
 from ai_service.collectors.session_collector import SessionCollector
 from ai_service.utils.dataset_exporter import DatasetExporter
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.pool import StaticPool
+
+# Setup test DB URL for pipeline isolation
+DATABASE_URL_TEST = "sqlite+aiosqlite:///:memory:"
+
+engine_test = create_async_engine(
+    DATABASE_URL_TEST,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+
+AsyncSessionFactoryTest = async_sessionmaker(
+    bind=engine_test,
+    expire_on_commit=False,
+    class_=AsyncSession,
+)
 
 
 class MockBackendAPIClient:
@@ -108,19 +125,19 @@ class TestAIServicePipeline(unittest.IsolatedAsyncioTestCase):
     """Test suite for AI Service Data Pipeline."""
 
     async def asyncSetUp(self):
-        async with engine.begin() as conn:
+        async with engine_test.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
             await conn.run_sync(Base.metadata.create_all)
 
     async def asyncTearDown(self):
-        async with engine.begin() as conn:
+        async with engine_test.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
 
 
     async def test_01_repositories_and_collectors(self):
         mock_client = MockBackendAPIClient()
 
-        async with AsyncSessionFactory() as session:
+        async with AsyncSessionFactoryTest() as session:
             # 1. Run Collectors
             occ_collector = OccupancyCollector(mock_client)
             res_collector = ReservationCollector(mock_client)
@@ -155,7 +172,7 @@ class TestAIServicePipeline(unittest.IsolatedAsyncioTestCase):
 
     async def test_02_csv_export(self):
         mock_client = MockBackendAPIClient()
-        async with AsyncSessionFactory() as session:
+        async with AsyncSessionFactoryTest() as session:
             # First collect records into database
             await OccupancyCollector(mock_client).collect(session)
             await ReservationCollector(mock_client).collect(session)
