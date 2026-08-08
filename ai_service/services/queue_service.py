@@ -214,7 +214,6 @@ class QueueService:
         avg_departures_adjusted = avg_departures_per_hour
         
         try:
-            from datetime import datetime, timezone, timedelta
             from ai_service.services.event_service import EventIntelligenceService
             event_service = EventIntelligenceService()
             target_time = datetime.now(timezone.utc) + timedelta(minutes=eta_minutes)
@@ -253,7 +252,6 @@ class QueueService:
 
         # 6. Apply composite event congestion/wait adjustments
         try:
-            from datetime import datetime, timezone, timedelta
             from ai_service.services.event_service import EventIntelligenceService
             event_service = EventIntelligenceService()
             target_time = datetime.now(timezone.utc) + timedelta(minutes=eta_minutes)
