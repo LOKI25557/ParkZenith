@@ -82,7 +82,12 @@ class ForecastingService:
         logger.info("Fetching database logs for facility_id: %d", facility_id)
 
         # Query raw history from tables
-        occ_stmt = select(OccupancyHistory).where(OccupancyHistory.facility_id == facility_id)
+        occ_stmt = (
+            select(OccupancyHistory)
+            .where(OccupancyHistory.facility_id == facility_id)
+            .order_by(OccupancyHistory.collected_at.desc())
+            .limit(100)
+        )
         res_stmt = select(ReservationHistory).where(ReservationHistory.facility_id == facility_id)
         sess_stmt = select(ParkingSessionHistory).where(ParkingSessionHistory.facility_id == facility_id)
 
@@ -183,7 +188,7 @@ class ForecastingService:
         returning the snapshot payload with confidence.
         """
         # Establish a safe baseline for current occupancy in case of failure
-        current_occ = 50.0
+        current_occ = 0.0
         try:
             occ_stmt = (
                 select(OccupancyHistory)
@@ -285,7 +290,7 @@ class ForecastingService:
         Dynamically trains the target regressor if missing.
         """
         # Establish baseline fallback current occupancy
-        current_occ = 50.0
+        current_occ = 0.0
         try:
             occ_stmt = (
                 select(OccupancyHistory)
