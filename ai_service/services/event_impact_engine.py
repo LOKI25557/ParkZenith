@@ -215,6 +215,7 @@ class EventImpactEngine:
             "distance_km": round(distance, 2),
             "attendance_impact": round(expected_attendance * distance_decay, 2),
             "extra_occupancy_percentage": round(extra_occ, 2),
+            "congestion_multiplier": round(cong_mult, 2),
             "expected_congestion_level": cong_lvl,
             "queue_wait_increase_minutes": round(queue_wait, 2),
             "facility_utilization_increase_percentage": round(extra_occ, 2),
