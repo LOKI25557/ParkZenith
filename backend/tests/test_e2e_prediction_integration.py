@@ -6,7 +6,9 @@ from httpx import AsyncClient, ASGITransport
 from backend.app.main import app
 from backend.app.database.session import get_async_session
 from backend.app.models.base import Base
-from backend.app.models.parking import ParkingFacility, ParkingSlot
+from backend.app.models.parking_facility import ParkingFacility
+from backend.app.models.parking_slot import ParkingSlot, ParkingSlotStatus
+from backend.app.models.parking_zone import ParkingZone
 from backend.app.services.ai_service_client import AIServiceClient, ai_service_client
 
 # Setup an in-memory SQLite database specifically for test isolated runs
@@ -49,14 +51,20 @@ class TestE2EPredictionIntegration(unittest.IsolatedAsyncioTestCase):
             facility2 = ParkingFacility(id=2, name="City Mall Parking", address="456 Avenue", city="Bangalore", is_active=True)
             session.add_all([facility1, facility2])
             
-            # Seed slots for facility 1 (10 slots total, 3 occupied)
+            zone1 = ParkingZone(id=1, facility_id=1, name="Zone A", is_active=True, total_slots=10)
+            zone2 = ParkingZone(id=2, facility_id=2, name="Zone B", is_active=True, total_slots=10)
+            session.add_all([zone1, zone2])
+            
+            # Seed slots for facility 1 (zone 1) (10 slots total, 3 occupied)
             for i in range(10):
-                slot = ParkingSlot(id=i+1, facility_id=1, slot_number=f"A-{i+1}", is_available=(i >= 3))
+                status = ParkingSlotStatus.AVAILABLE if i >= 3 else ParkingSlotStatus.OCCUPIED
+                slot = ParkingSlot(id=i+1, zone_id=1, slot_number=f"A-{i+1}", status=status)
                 session.add(slot)
                 
-            # Seed slots for facility 2 (10 slots total, 8 occupied)
+            # Seed slots for facility 2 (zone 2) (10 slots total, 8 occupied)
             for i in range(10):
-                slot = ParkingSlot(id=i+11, facility_id=2, slot_number=f"B-{i+1}", is_available=(i >= 8))
+                status = ParkingSlotStatus.AVAILABLE if i >= 8 else ParkingSlotStatus.OCCUPIED
+                slot = ParkingSlot(id=i+11, zone_id=2, slot_number=f"B-{i+1}", status=status)
                 session.add(slot)
                 
             await session.commit()
