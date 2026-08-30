@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from sqlalchemy.sql import func
 from .base import Base
+from sqlalchemy.orm import relationship
 
 
 class User(Base):
@@ -24,3 +25,8 @@ class User(Base):
     @hashed_password.setter
     def hashed_password(self, value: str) -> None:
         self.password_hash = value
+
+    admin = relationship("Admin", back_populates="user", uselist=False)
+    reservations = relationship("Reservation", back_populates="user")
+    sessions = relationship("ParkingSession", back_populates="user")
+    payments = relationship("Payment", back_populates="user")
