@@ -243,7 +243,8 @@ from fastapi import Depends
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.database.session import get_async_session
-from backend.app.models.parking import ParkingFacility, ParkingSlot
+from backend.app.models.parking_facility import ParkingFacility
+from backend.app.models.parking_slot import ParkingSlot
 from backend.app.models.reservation import Reservation, ReservationStatus
 from backend.app.models.session import ParkingSession
 
@@ -261,9 +262,11 @@ async def get_occupancy_history(limit: int = 500, db: AsyncSession = Depends(get
     history = []
     
     for f in facilities:
-        total_stmt = select(func.count(ParkingSlot.id)).where(ParkingSlot.facility_id == f.id)
-        occ_stmt = select(func.count(ParkingSlot.id)).where(
-            and_(ParkingSlot.facility_id == f.id, ParkingSlot.is_available == False)
+        from backend.app.models.parking_zone import ParkingZone
+        from backend.app.models.parking_slot import ParkingSlotStatus
+        total_stmt = select(func.count(ParkingSlot.id)).join(ParkingZone).where(ParkingZone.facility_id == f.id)
+        occ_stmt = select(func.count(ParkingSlot.id)).join(ParkingZone).where(
+            and_(ParkingZone.facility_id == f.id, ParkingSlot.status == ParkingSlotStatus.OCCUPIED)
         )
         total_slots = (await db.execute(total_stmt)).scalar() or 0
         occupied_slots = (await db.execute(occ_stmt)).scalar() or 0

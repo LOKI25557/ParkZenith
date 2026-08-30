@@ -7,7 +7,8 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database.session import get_async_session
-from backend.app.models.parking import ParkingFacility, ParkingSlot
+from backend.app.models.parking_facility import ParkingFacility
+from backend.app.models.parking_slot import ParkingSlot
 from backend.app.services.ai_service_client import ai_service_client
 from backend.app.schemas.prediction import RecommendationRequestSchema
 from backend.app.core.cache import cache
@@ -36,9 +37,11 @@ async def db_fallback_occupancy(db: AsyncSession, facility_id: int) -> tuple[flo
     Returns: (occupancy_percentage, total_slots, occupied_slots)
     """
     try:
-        total_slots_stmt = select(func.count(ParkingSlot.id)).where(ParkingSlot.facility_id == facility_id)
-        occupied_slots_stmt = select(func.count(ParkingSlot.id)).where(
-            and_(ParkingSlot.facility_id == facility_id, ParkingSlot.is_available == False)
+        from backend.app.models.parking_zone import ParkingZone
+        from backend.app.models.parking_slot import ParkingSlotStatus
+        total_slots_stmt = select(func.count(ParkingSlot.id)).join(ParkingZone).where(ParkingZone.facility_id == facility_id)
+        occupied_slots_stmt = select(func.count(ParkingSlot.id)).join(ParkingZone).where(
+            and_(ParkingZone.facility_id == facility_id, ParkingSlot.status == ParkingSlotStatus.OCCUPIED)
         )
         
         total_res = await db.execute(total_slots_stmt)
