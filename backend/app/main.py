@@ -8,6 +8,7 @@ import uuid
 from .core.config import settings
 from .core.logging_setup import setup_logging, request_context
 from .api.router import api_router
+from .api.websocket.router import router as websocket_router
 from .database.session import engine, AsyncSessionLocal
 
 # Initialize structured logging formatter
@@ -384,6 +385,7 @@ async def create_e2e_reservation(req: E2EReservationCreate, db: AsyncSession = D
 # Include API routers
 
 app.include_router(api_router)
+app.include_router(websocket_router)
 
 
 if __name__ == "__main__":

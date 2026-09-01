@@ -202,9 +202,54 @@ class ParkingService:
         slot = await self.get_slot(db, slot_id)
         if not slot:
             return None
+        
+        old_status = slot.status
+        if old_status == status:
+            return slot
+            
         slot.status = status
         await db.commit()
         await db.refresh(slot)
+        
+        try:
+            zone = await self.get_zone(db, slot.zone_id)
+            if zone:
+                facility_id = zone.facility_id
+                from .realtime import manager
+                from ..schemas.realtime import SlotStatusChangedEvent, OccupancyUpdatedEvent, OccupancyData
+                from datetime import datetime, timezone
+                
+                timestamp = datetime.now(timezone.utc).isoformat()
+                
+                slot_event = SlotStatusChangedEvent(
+                    facility_id=facility_id,
+                    zone_id=slot.zone_id,
+                    slot_id=slot.id,
+                    slot_number=slot.slot_number,
+                    old_status=old_status.value if hasattr(old_status, "value") else str(old_status),
+                    new_status=status.value if hasattr(status, "value") else str(status),
+                    timestamp=timestamp
+                )
+                await manager.broadcast_to_facility(facility_id, slot_event.model_dump_json())
+                
+                availability = await self.get_facility_availability(db, facility_id)
+                occ_data = OccupancyData(
+                    total_slots=availability.total_slots,
+                    available_slots=availability.available,
+                    occupied_slots=availability.occupied,
+                    reserved_slots=availability.reserved,
+                    occupancy_percentage=availability.occupancy_percentage
+                )
+                occ_event = OccupancyUpdatedEvent(
+                    facility_id=facility_id,
+                    timestamp=timestamp,
+                    data=occ_data
+                )
+                await manager.broadcast_to_facility(facility_id, occ_event.model_dump_json())
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Error publishing real-time events: {e}")
+
         return slot
 
     async def delete_slot(self, db: AsyncSession, slot_id: int) -> bool:
