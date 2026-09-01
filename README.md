@@ -101,10 +101,13 @@ ParkZenith/
 │   ├── tests/
 │   ├── requirements.txt
 │   └── .env.example
+├── ai_service/
+├── scripts/
 ├── docs/
 │   ├── architecture.md
 │   ├── api_design.md
 │   └── database_schema.md
+├── docker-compose.yml
 ├── README.md
 └── .gitignore
 ```
@@ -118,10 +121,12 @@ ParkZenith/
 Current Progress:
 
 - **Backend core features implemented**: Auth, Parking Facilities, Slots, Reservations, Payments, and Sessions.
-- **AI Service integrated**: Predictive pipelines for availability, queue time, and smart recommendations.
-- **Database schemas and migrations defined**: PostgreSQL via SQLAlchemy & Alembic.
+- **Advanced Parking Schema**: Refactored core parking models to support a robust hierarchy (Facilities, Zones, and Slots).
+- **AI Service integrated**: Predictive pipelines for availability, queue time, and smart recommendations updated for new parking schema.
+- **Database schemas and migrations defined**: PostgreSQL via SQLAlchemy & Alembic (including core parking schema migration).
 - **Real-time communication set up**: WebSocket support for live occupancy updates.
-- **E2E Testing & Data Sync APIs built**: Seeding scripts and sync endpoints ready for frontend integration.
+- **Admin Dashboard**: Updated Admin Analytics Dashboard entry.
+- **E2E Testing & Data Sync APIs built**: Seeding scripts, comprehensive database tests for parking model relationships, and sync endpoints ready for frontend integration.
 
 ---
 
