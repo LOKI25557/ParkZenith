@@ -338,48 +338,7 @@ async def get_sessions_history(limit: int = 500, db: AsyncSession = Depends(get_
         })
     return history
 
-# 4. E2E Slot Reservation
-@app.post("/reservations")
-@app.post("/api/v1/reservations")
-async def create_e2e_reservation(req: E2EReservationCreate, db: AsyncSession = Depends(get_async_session)):
-    from backend.app.core.dependencies import get_current_user
-    # Fetch a dummy/fallback user since auth is optional in local testing
-    from backend.app.models.user import User
-    user_stmt = select(User).limit(1)
-    user = (await db.execute(user_stmt)).scalar()
-    if not user:
-        # Create user if not exists
-        user = User(full_name="E2E Test User", email="e2e-tester@parkzenith.com", hashed_password="hashedpassword", is_active=True)
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
-        
-    reservation = Reservation(
-        user_id=user.id,
-        slot_id=req.slot_id,
-        start_time=req.start_time,
-        end_time=req.end_time,
-        status=ReservationStatus.CONFIRMED
-    )
-    db.add(reservation)
-    
-    # Mark the slot as occupied
-    slot_stmt = select(ParkingSlot).where(ParkingSlot.id == req.slot_id)
-    slot = (await db.execute(slot_stmt)).scalar()
-    if slot:
-        slot.is_available = False
-        db.add(slot)
-        
-    await db.commit()
-    await db.refresh(reservation)
-    return {
-        "id": reservation.id,
-        "user_id": reservation.user_id,
-        "slot_id": reservation.slot_id,
-        "start_time": reservation.start_time.isoformat(),
-        "end_time": reservation.end_time.isoformat(),
-        "status": reservation.status.value
-    }
+
 
 
 # Include API routers
