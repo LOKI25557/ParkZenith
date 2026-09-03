@@ -7,9 +7,11 @@ from fastapi import HTTPException
 from ..models.session import ParkingSession, ParkingSessionStatus
 from ..models.reservation import Reservation, ReservationStatus
 from ..models.parking_slot import ParkingSlotStatus
+from ..models.payment import PaymentMethod
 from ..schemas.session import SessionCreate, SessionUpdate
 from .parking_service import parking_service
 from .reservation_service import reservation_service
+from .payment_service import payment_service
 
 class SessionService:
     async def start_session(self, db: AsyncSession, user_id: int, session_in: SessionCreate) -> ParkingSession:
@@ -128,8 +130,15 @@ class SessionService:
         delta = now - check_in_time
         session.duration_minutes = int(delta.total_seconds() / 60)
 
-        # For future payment integration we could calculate fee here
-        # session.fee_amount = calculate_fee(...)
+        # Calculate fee and create payment
+        session.fee_amount = payment_service.calculate_fee(session.duration_minutes)
+        await payment_service.create_payment(
+            db=db,
+            session_id=session.id,
+            user_id=session.user_id,
+            amount=session.fee_amount,
+            method=PaymentMethod.ONLINE
+        )
 
         # If there's an associated reservation, mark it completed too
         if session.reservation_id:
