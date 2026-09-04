@@ -5,15 +5,15 @@ from sqlalchemy import select
 from datetime import datetime, timezone, timedelta
 import pytest_asyncio
 
-from app.models.base import Base
-from app.models.user import User
-from app.models.admin import Admin, AdminRole
-from app.models.parking_facility import ParkingFacility
-from app.models.parking_zone import ParkingZone
-from app.models.parking_slot import ParkingSlot, ParkingSlotStatus, VehicleType
-from app.models.reservation import Reservation, ReservationStatus
-from app.models.session import ParkingSession, ParkingSessionStatus
-from app.models.payment import Payment, PaymentStatus, PaymentMethod
+from backend.app.models.base import Base
+from backend.app.models.user import User
+from backend.app.models.admin import Admin, AdminRole
+from backend.app.models.parking_facility import ParkingFacility
+from backend.app.models.parking_zone import ParkingZone
+from backend.app.models.parking_slot import ParkingSlot, ParkingSlotStatus, VehicleType
+from backend.app.models.reservation import Reservation, ReservationStatus
+from backend.app.models.session import ParkingSession, ParkingSessionStatus
+from backend.app.models.payment import Payment, PaymentStatus, PaymentMethod
 
 DATABASE_URL_TEST = "sqlite+aiosqlite:///:memory:"
 
