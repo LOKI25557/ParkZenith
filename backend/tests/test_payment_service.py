@@ -6,16 +6,16 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.pool import StaticPool
 from fastapi import HTTPException
 
-from app.models.base import Base
-from app.models.user import User
-from app.models.parking_slot import ParkingSlot, ParkingSlotStatus, VehicleType
-from app.models.parking_zone import ParkingZone
-from app.models.parking_facility import ParkingFacility
-from app.models.session import ParkingSession, ParkingSessionStatus
-from app.models.payment import PaymentMethod, PaymentStatus
-from app.services.payment_service import payment_service
-from app.schemas.session import SessionCreate
-from app.services.session_service import session_service
+from backend.app.models.base import Base
+from backend.app.models.user import User
+from backend.app.models.parking_slot import ParkingSlot, ParkingSlotStatus, VehicleType
+from backend.app.models.parking_zone import ParkingZone
+from backend.app.models.parking_facility import ParkingFacility
+from backend.app.models.session import ParkingSession, ParkingSessionStatus
+from backend.app.models.payment import PaymentMethod, PaymentStatus
+from backend.app.services.payment_service import payment_service
+from backend.app.schemas.session import SessionCreate
+from backend.app.services.session_service import session_service
 
 DATABASE_URL_TEST = "sqlite+aiosqlite:///:memory:"
 
