@@ -20,7 +20,7 @@ class TestHealthEndpoint(unittest.IsolatedAsyncioTestCase):
     async def test_ready_endpoint_success(self):
         from unittest.mock import patch, MagicMock
         # Mock database session execution and httpx call to AI Service
-        with patch("backend.app.database.session.AsyncSessionLocal") as mock_session_local:
+        with patch("backend.app.main.AsyncSessionLocal") as mock_session_local:
             mock_session = MagicMock()
             async def mock_execute(*args, **kwargs):
                 return None
