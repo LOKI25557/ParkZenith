@@ -7,10 +7,12 @@ from ...database.session import get_async_session
 from ...models.user import User
 from ...schemas.reservation import ReservationCreate, ReservationRead, ReservationListResponse
 from ...services.reservation_service import reservation_service
+from ...core.rate_limiter import RateLimiter
 
 router = APIRouter(prefix="/reservations", tags=["reservations"])
+reservation_rate_limiter = RateLimiter(requests=10, window_seconds=60)
 
-@router.post("", response_model=ReservationRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ReservationRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(reservation_rate_limiter)])
 async def create_reservation(
     reservation_in: ReservationCreate,
     db: AsyncSession = Depends(get_async_session),

@@ -2,6 +2,7 @@ from decimal import Decimal
 from typing import List, Optional
 from datetime import datetime, timezone
 import uuid
+import asyncio
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -12,6 +13,9 @@ from ..models.payment import Payment, PaymentStatus, PaymentMethod
 class PaymentService:
     BASE_HOURLY_RATE = Decimal('5.00')
     MINIMUM_CHARGE = Decimal('2.00')
+    
+    def __init__(self):
+        self._processing_lock = asyncio.Lock()
 
     def calculate_fee(self, duration_minutes: int) -> Decimal:
         """Calculate the parking fee based on duration."""
@@ -78,33 +82,35 @@ class PaymentService:
         transaction_id: Optional[str] = None,
         payment_method: Optional[PaymentMethod] = None
     ) -> Payment:
-        payment = await self.get_payment(db, payment_id)
-        if not payment:
-            raise HTTPException(status_code=404, detail="Payment not found")
-            
-        if payment.user_id != user_id:
-            raise HTTPException(status_code=403, detail="Not authorized to process this payment")
-            
-        if payment.payment_status == PaymentStatus.SUCCESS:
-            raise HTTPException(status_code=400, detail="Payment is already successful")
-            
-        if payment.payment_status == PaymentStatus.REFUNDED:
-            raise HTTPException(status_code=400, detail="Cannot process a refunded payment")
-            
-        # Update payment method if provided
-        if payment_method:
-            payment.payment_method = payment_method
-
-        if simulate_success:
-            payment.payment_status = PaymentStatus.SUCCESS
-            payment.paid_at = datetime.now(timezone.utc)
-            payment.transaction_id = transaction_id or f"TXN-{uuid.uuid4().hex[:8].upper()}"
-        else:
-            payment.payment_status = PaymentStatus.FAILED
-            
-        db.add(payment)
-        await db.commit()
-        await db.refresh(payment)
-        return payment
+        async with self._processing_lock:
+            # We must use with_for_update if possible, but asyncio.Lock protects local concurrency
+            payment = await self.get_payment(db, payment_id)
+            if not payment:
+                raise HTTPException(status_code=404, detail="Payment not found")
+                
+            if payment.user_id != user_id:
+                raise HTTPException(status_code=403, detail="Not authorized to process this payment")
+                
+            if payment.payment_status == PaymentStatus.SUCCESS:
+                raise HTTPException(status_code=400, detail="Payment is already successful")
+                
+            if payment.payment_status == PaymentStatus.REFUNDED:
+                raise HTTPException(status_code=400, detail="Cannot process a refunded payment")
+                
+            # Update payment method if provided
+            if payment_method:
+                payment.payment_method = payment_method
+    
+            if simulate_success:
+                payment.payment_status = PaymentStatus.SUCCESS
+                payment.paid_at = datetime.now(timezone.utc)
+                payment.transaction_id = transaction_id or f"TXN-{uuid.uuid4().hex[:8].upper()}"
+            else:
+                payment.payment_status = PaymentStatus.FAILED
+                
+            db.add(payment)
+            await db.commit()
+            await db.refresh(payment)
+            return payment
 
 payment_service = PaymentService()

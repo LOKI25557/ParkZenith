@@ -9,6 +9,7 @@ from backend.app.database.session import get_async_session
 from backend.app.models.base import Base
 from backend.app.core.dependencies import get_admin_user, get_current_user
 from backend.app.models.user import User
+from backend.app.core.security import create_access_token
 
 DATABASE_URL_TEST = "sqlite+aiosqlite:///:memory:"
 
@@ -79,7 +80,8 @@ def test_realtime_websocket_flow():
     slot_id = res.json()["id"]
 
     # 4. Connect via WebSocket and check initial snapshot
-    with client.websocket_connect(f"/ws/parking/{facility_id}") as websocket:
+    token = create_access_token({"sub": "user@test.com"})
+    with client.websocket_connect(f"/ws/parking/{facility_id}?token={token}") as websocket:
         data = websocket.receive_json()
         assert data["event"] == "parking_snapshot"
         assert data["facility_id"] == facility_id
@@ -110,9 +112,19 @@ def test_realtime_websocket_flow():
 
 def test_websocket_invalid_facility():
     from starlette.websockets import WebSocketDisconnect
+    token = create_access_token({"sub": "user@test.com"})
+    try:
+        with client.websocket_connect(f"/ws/parking/9999?token={token}") as websocket:
+            websocket.receive_json()
+        assert False, "Should have disconnected"
+    except WebSocketDisconnect as e:
+        assert e.code == 1008
+
+def test_websocket_unauthorized():
+    from starlette.websockets import WebSocketDisconnect
     try:
         with client.websocket_connect("/ws/parking/9999") as websocket:
             websocket.receive_json()
         assert False, "Should have disconnected"
     except WebSocketDisconnect as e:
-        assert e.code == 4004
+        assert e.code == 1008

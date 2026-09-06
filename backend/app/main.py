@@ -55,6 +55,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         message = str(exc)
         
     from fastapi.responses import JSONResponse
+    request_id = request.headers.get("X-Request-ID", "unknown")
     return JSONResponse(
         status_code=500,
         content={
@@ -65,6 +66,49 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
                 "message": message,
                 "details": {"error_type": exc.__class__.__name__},
                 "path": request.url.path,
+                "request_id": request_id,
+            }
+        },
+    )
+
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    request_id = request.headers.get("X-Request-ID", "unknown")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "detail": str(exc.detail),
+            "error": {
+                "code": f"HTTP_{exc.status_code}",
+                "message": str(exc.detail),
+                "details": None,
+                "path": request.url.path,
+                "request_id": request_id,
+            }
+        },
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    request_id = request.headers.get("X-Request-ID", "unknown")
+    errors = exc.errors()
+    simplified_errors = [{"loc": err.get("loc"), "msg": err.get("msg"), "type": err.get("type")} for err in errors]
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "success": False,
+            "detail": "Validation Error",
+            "error": {
+                "code": "VALIDATION_ERROR",
+                "message": "The request contains invalid data.",
+                "details": simplified_errors,
+                "path": request.url.path,
+                "request_id": request_id,
             }
         },
     )

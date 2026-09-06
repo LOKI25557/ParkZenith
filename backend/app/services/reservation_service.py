@@ -10,46 +10,59 @@ from ..schemas.reservation import ReservationCreate, ReservationUpdate
 from .parking_service import parking_service
 from .realtime import manager
 from ..schemas.realtime import SlotStatusChangedEvent, OccupancyUpdatedEvent, OccupancyData
+import asyncio
 
 class ReservationService:
+    def __init__(self):
+        self._creation_lock = asyncio.Lock()
+
     async def create_reservation(self, db: AsyncSession, user_id: int, reservation_in: ReservationCreate) -> Reservation:
-        # Check slot
-        slot = await parking_service.get_slot(db, reservation_in.slot_id)
-        if not slot:
-            raise HTTPException(status_code=404, detail="Slot not found")
-        if not slot.is_active:
-            raise HTTPException(status_code=400, detail="Slot is not active")
-
-        # Check overlapping
-        overlap_stmt = select(Reservation).where(
-            and_(
-                Reservation.slot_id == reservation_in.slot_id,
-                Reservation.status.in_([ReservationStatus.PENDING, ReservationStatus.CONFIRMED, ReservationStatus.ACTIVE]),
-                Reservation.reservation_start < reservation_in.reservation_end,
-                Reservation.reservation_end > reservation_in.reservation_start
+        async with self._creation_lock:
+            # Check slot
+            slot = await parking_service.get_slot(db, reservation_in.slot_id)
+            if not slot:
+                raise HTTPException(status_code=404, detail="Slot not found")
+            if not slot.is_active:
+                raise HTTPException(status_code=400, detail="Slot is not active")
+    
+            # Check overlapping
+            overlap_stmt = select(Reservation).where(
+                and_(
+                    Reservation.slot_id == reservation_in.slot_id,
+                    Reservation.status.in_([ReservationStatus.PENDING, ReservationStatus.CONFIRMED, ReservationStatus.ACTIVE]),
+                    Reservation.reservation_start < reservation_in.reservation_end,
+                    Reservation.reservation_end > reservation_in.reservation_start
+                )
+            ).with_for_update()
+            
+            try:
+                overlaps = (await db.execute(overlap_stmt)).scalars().all()
+            except Exception:
+                # Fallback if DB (like sqlite) doesn't support with_for_update
+                await db.rollback()
+                overlap_stmt = overlap_stmt.with_for_update(None)
+                overlaps = (await db.execute(overlap_stmt)).scalars().all()
+                
+            if overlaps:
+                raise HTTPException(status_code=409, detail="Slot is already reserved for this time range")
+    
+            reservation = Reservation(
+                user_id=user_id,
+                slot_id=reservation_in.slot_id,
+                reservation_start=reservation_in.reservation_start,
+                reservation_end=reservation_in.reservation_end,
+                status=ReservationStatus.CONFIRMED
             )
-        )
-        overlaps = (await db.execute(overlap_stmt)).scalars().all()
-        if overlaps:
-            raise HTTPException(status_code=409, detail="Slot is already reserved for this time range")
-
-        reservation = Reservation(
-            user_id=user_id,
-            slot_id=reservation_in.slot_id,
-            reservation_start=reservation_in.reservation_start,
-            reservation_end=reservation_in.reservation_end,
-            status=ReservationStatus.CONFIRMED
-        )
-        db.add(reservation)
-        await db.commit()
-        await db.refresh(reservation)
-
-        # Update slot status to RESERVED if not already
-        await parking_service.update_slot_status(db, slot.id, ParkingSlotStatus.RESERVED)
-
-        # We can also emit a custom reservation created event if needed, but slot status already broadcasts
-
-        return reservation
+            db.add(reservation)
+            await db.commit()
+            await db.refresh(reservation)
+    
+            # Update slot status to RESERVED if not already
+            await parking_service.update_slot_status(db, slot.id, ParkingSlotStatus.RESERVED)
+    
+            # We can also emit a custom reservation created event if needed, but slot status already broadcasts
+    
+            return reservation
 
     async def get_reservation(self, db: AsyncSession, reservation_id: int) -> Optional[Reservation]:
         stmt = select(Reservation).where(Reservation.id == reservation_id)

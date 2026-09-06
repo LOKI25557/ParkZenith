@@ -1,4 +1,4 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime, timezone
@@ -10,16 +10,26 @@ from ...services.realtime import manager
 from ...schemas.realtime import ParkingSnapshotEvent, ParkingSnapshotData, SlotInfo
 from ...models.parking_slot import ParkingSlot
 from ...models.parking_zone import ParkingZone
+from ...core.security import verify_access_token
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ws", tags=["websocket"])
 
 @router.websocket("/parking/{facility_id}")
-async def parking_websocket_endpoint(websocket: WebSocket, facility_id: int, db: AsyncSession = Depends(get_async_session)):
+async def parking_websocket_endpoint(
+    websocket: WebSocket, 
+    facility_id: int, 
+    token: str = None,
+    db: AsyncSession = Depends(get_async_session)
+):
+    if not token or not verify_access_token(token):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Unauthorized")
+        return
+
     facility = await parking_service.get_facility(db, facility_id)
     if not facility:
-        await websocket.close(code=4004, reason="Facility not found")
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Facility not found")
         return
     
     await manager.connect(websocket, facility_id)
