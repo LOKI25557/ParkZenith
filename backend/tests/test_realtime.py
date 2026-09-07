@@ -11,7 +11,7 @@ from backend.app.core.dependencies import get_admin_user, get_current_user
 from backend.app.models.user import User
 from backend.app.core.security import create_access_token
 
-DATABASE_URL_TEST = "sqlite+aiosqlite:///:memory:"
+DATABASE_URL_TEST = "sqlite+aiosqlite:///test_realtime.db"
 
 engine_test = create_async_engine(
     DATABASE_URL_TEST,
