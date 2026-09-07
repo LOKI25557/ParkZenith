@@ -156,6 +156,50 @@ To populate the local SQLite databases (or production PostgreSQL instances) with
 
 ---
 
+## 🚀 Deployment & Production Readiness
+
+### Prerequisites
+- Docker & Docker Compose
+- Node.js (for frontend, if applicable)
+
+### Environment Variables
+Before deploying, ensure you configure the environment correctly. An example file is provided at `backend/.env.example`.
+Copy it to `backend/.env` and adjust the values, importantly `DATABASE_URL` and `SECRET_KEY`.
+**DO NOT COMMIT `.env` to version control.**
+
+### Database Setup & Alembic Migrations
+When deploying, initialize the database using Alembic migrations from within the backend directory:
+```bash
+export DATABASE_URL=postgresql+asyncpg://user:pass@host/dbname
+alembic upgrade head
+```
+
+### Local Development vs. Docker Deployment
+- **Local Development**: Run `uvicorn backend.app.main:app --reload` with a local SQLite database.
+- **Docker Deployment**: Use the provided `docker-compose.yml` to spin up PostgreSQL, the AI Service, and the Backend API.
+
+### Starting the Backend (Docker)
+```bash
+docker-compose build
+docker-compose up -d
+```
+
+### Health & Readiness Endpoints
+ParkZenith provides standardized endpoints for orchestrator checks (e.g., Kubernetes, Docker Swarm):
+- `/health`: Liveness probe indicating the application is running.
+- `/live`: Alias for liveness checking.
+- `/ready`: Readiness probe verifying connectivity to PostgreSQL and the AI Service.
+
+### Production Security Notes
+- CORS is restricted in production. Update `ALLOWED_ORIGINS` in `.env`.
+- Debug mode is forcibly disabled in production via config validation.
+- Standard security headers (HSTS, CSP, X-Frame-Options) are enforced via middleware.
+
+### Known Limitations
+- The current implementation of API Rate Limiting (`RateLimiter`) uses an in-memory dictionary. In a multi-worker production environment (e.g. Uvicorn with `--workers 4`), rate limit tracking is not shared across workers. For distributed limits, a Redis-based backend would be required.
+
+---
+
 ## 📜 License
 
 This project is being developed for educational and research purposes.
