@@ -17,6 +17,7 @@ logger = logging.getLogger("backend.main")
 
 app = FastAPI(title="ParkZenith API", debug=settings.DEBUG)
 
+
 # Configure CORS origins dynamically
 allowed_origins = [origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",") if origin.strip()]
 if settings.ENVIRONMENT == "production":
@@ -222,6 +223,11 @@ async def health():
         "service": settings.PROJECT_NAME,
         "environment": settings.ENVIRONMENT,
     }
+
+@app.get("/live", tags=["health"])
+async def live():
+    """Liveness probe for orchestrators."""
+    return {"status": "ALIVE"}
 
 
 @app.get("/metrics", tags=["health"])
