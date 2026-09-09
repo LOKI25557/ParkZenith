@@ -5,7 +5,7 @@ Handles database queries via repositories, triggers the pipeline, and saves trai
 
 import os
 import logging
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 
