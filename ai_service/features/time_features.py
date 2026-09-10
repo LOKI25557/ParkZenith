@@ -6,6 +6,7 @@ Extracts calendar and business/peak indicators from datetime columns.
 import logging
 import pandas as pd
 import numpy as np
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 

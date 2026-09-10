@@ -8,6 +8,7 @@ import uuid
 from .core.config import settings
 from .core.logging_setup import setup_logging, request_context
 from .api.router import api_router
+from .api.websocket.router import router as websocket_router
 from .database.session import engine, AsyncSessionLocal
 
 # Initialize structured logging formatter
@@ -15,6 +16,7 @@ setup_logging()
 logger = logging.getLogger("backend.main")
 
 app = FastAPI(title="ParkZenith API", debug=settings.DEBUG)
+
 
 # Configure CORS origins dynamically
 allowed_origins = [origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",") if origin.strip()]
@@ -54,6 +56,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         message = str(exc)
         
     from fastapi.responses import JSONResponse
+    request_id = request.headers.get("X-Request-ID", "unknown")
     return JSONResponse(
         status_code=500,
         content={
@@ -64,6 +67,49 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
                 "message": message,
                 "details": {"error_type": exc.__class__.__name__},
                 "path": request.url.path,
+                "request_id": request_id,
+            }
+        },
+    )
+
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    request_id = request.headers.get("X-Request-ID", "unknown")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "detail": str(exc.detail),
+            "error": {
+                "code": f"HTTP_{exc.status_code}",
+                "message": str(exc.detail),
+                "details": None,
+                "path": request.url.path,
+                "request_id": request_id,
+            }
+        },
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    request_id = request.headers.get("X-Request-ID", "unknown")
+    errors = exc.errors()
+    simplified_errors = [{"loc": err.get("loc"), "msg": err.get("msg"), "type": err.get("type")} for err in errors]
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "success": False,
+            "detail": "Validation Error",
+            "error": {
+                "code": "VALIDATION_ERROR",
+                "message": "The request contains invalid data.",
+                "details": simplified_errors,
+                "path": request.url.path,
+                "request_id": request_id,
             }
         },
     )
@@ -177,6 +223,11 @@ async def health():
         "service": settings.PROJECT_NAME,
         "environment": settings.ENVIRONMENT,
     }
+
+@app.get("/live", tags=["health"])
+async def live():
+    """Liveness probe for orchestrators."""
+    return {"status": "ALIVE"}
 
 
 @app.get("/metrics", tags=["health"])
@@ -337,53 +388,13 @@ async def get_sessions_history(limit: int = 500, db: AsyncSession = Depends(get_
         })
     return history
 
-# 4. E2E Slot Reservation
-@app.post("/reservations")
-@app.post("/api/v1/reservations")
-async def create_e2e_reservation(req: E2EReservationCreate, db: AsyncSession = Depends(get_async_session)):
-    from backend.app.core.dependencies import get_current_user
-    # Fetch a dummy/fallback user since auth is optional in local testing
-    from backend.app.models.user import User
-    user_stmt = select(User).limit(1)
-    user = (await db.execute(user_stmt)).scalar()
-    if not user:
-        # Create user if not exists
-        user = User(full_name="E2E Test User", email="e2e-tester@parkzenith.com", hashed_password="hashedpassword", is_active=True)
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
-        
-    reservation = Reservation(
-        user_id=user.id,
-        slot_id=req.slot_id,
-        start_time=req.start_time,
-        end_time=req.end_time,
-        status=ReservationStatus.CONFIRMED
-    )
-    db.add(reservation)
-    
-    # Mark the slot as occupied
-    slot_stmt = select(ParkingSlot).where(ParkingSlot.id == req.slot_id)
-    slot = (await db.execute(slot_stmt)).scalar()
-    if slot:
-        slot.is_available = False
-        db.add(slot)
-        
-    await db.commit()
-    await db.refresh(reservation)
-    return {
-        "id": reservation.id,
-        "user_id": reservation.user_id,
-        "slot_id": reservation.slot_id,
-        "start_time": reservation.start_time.isoformat(),
-        "end_time": reservation.end_time.isoformat(),
-        "status": reservation.status.value
-    }
+
 
 
 # Include API routers
 
 app.include_router(api_router)
+app.include_router(websocket_router)
 
 
 if __name__ == "__main__":

@@ -12,10 +12,12 @@ from backend.app.models.parking_slot import ParkingSlot
 from backend.app.services.ai_service_client import ai_service_client
 from backend.app.schemas.prediction import RecommendationRequestSchema
 from backend.app.core.cache import cache
+from backend.app.core.rate_limiter import RateLimiter
 
 logger = logging.getLogger("backend.api.prediction")
 
-router = APIRouter(prefix="/prediction", tags=["prediction"])
+prediction_rate_limiter = RateLimiter(requests=15, window_seconds=60)
+router = APIRouter(prefix="/prediction", tags=["prediction"], dependencies=[Depends(prediction_rate_limiter)])
 
 
 # Static registry for fallback metadata when AI Service is unavailable
