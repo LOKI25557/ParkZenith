@@ -23,7 +23,6 @@ The platform combines smart parking management with predictive analytics to fore
 - 🎯 Smart Parking Recommendations
 - ⏱ Queue & Entry Time Prediction
 - 🎪 Event-Aware Demand Forecasting
-- 🚗 Return-to-Car Navigation
 - 📊 Admin  Dashboard
 
 ---
