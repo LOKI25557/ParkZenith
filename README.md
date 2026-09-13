@@ -178,7 +178,7 @@ Copy it to `backend/.env` and adjust the values, importantly `DATABASE_URL` and 
 **DO NOT COMMIT `.env` to version control.**
 
 ### Database Setup & Alembic Migrations
-When deploying, initialize the database using Alembic migrations from within the backend directory:
+When deploying, initialize the database using Alembic migrations from backend directory:
 ```bash
 export DATABASE_URL=postgresql+asyncpg://user:pass@host/dbname
 alembic upgrade head
