@@ -4,9 +4,7 @@
 
 ParkZenith is an AI-powered smart parking platform that enables users to discover nearby parking spaces, reserve slots, navigate to parking facilities, and make informed parking decisions through real-time occupancy tracking and machine learning-driven predictions.
 It provides real-time parking management, reservations, navigation, and predictive insights to help users find the best parking option efficiently.
-The platform combines smart parking management with predictive analytics to forecast parking demand, estimate future availability, generate occupancy heat maps, predict queue times, and recommend the best parking options before users begin their journey.
-
----
+The platform combines smart parking management with predictive analytics to forecast parking demand, estimate future availability, generate occupancy heat maps, predict queue times, and recommend the best parking options before users begin their journey.ParkZenith is a next-generation parking intelligence platform designed to reduce the uncertainty and time involved in finding parking. It integrates live parking data, reservations, navigation, and AI-based decision support into a unified system. By analyzing historical and real-time parking patterns, the platform can anticipate demand, identify potential availability issues, and guide users toward more suitable parking facilities. It also supports digital parking operations, automated transactions, and analytics for facility administrators, creating a smarter ecosystem for both drivers and parking operators.
 
 ## 🌟 Key Features
 
