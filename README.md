@@ -42,7 +42,7 @@ The platform combines smart parking management with predictive analytics to fore
 
 - PostgreSQL
 - Firebase Firestore
-
+- sql
 ### Real-Time Communication
 
 - Firebase Realtime Database
