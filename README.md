@@ -59,7 +59,7 @@ The platform combines smart parking management with predictive analytics to fore
 - Python
 - Pandas
 - NumPy
-- Scikit-learn
+- Scikit - learn
 
 ### Visualization
 
