@@ -8,7 +8,7 @@ The platform combines smart parking management with predictive analytics to fore
 
 ## 🌟 Key Features
 
-- 🔍 Nearby Parking Discovery
+- 🔍 Nearby Parking 
 - 🅿️ Live Parking Slot Visualization
 - 📅 Smart Slot Reservation
 - 🧭 Navigation to Parking Facilities
