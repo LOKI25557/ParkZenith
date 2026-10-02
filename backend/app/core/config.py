@@ -3,13 +3,18 @@ from pydantic import model_validator
 from dotenv import load_dotenv
 from typing import Optional, List, Union
 import os
+from pathlib import Path
 
-load_dotenv()
+# Resolve the backend directory path dynamically
+BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+ENV_FILE = BACKEND_DIR / ".env"
+
+load_dotenv(dotenv_path=ENV_FILE)
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(ENV_FILE),
         env_file_encoding="utf-8",
         extra="ignore",
     )
