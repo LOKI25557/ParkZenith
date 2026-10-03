@@ -36,7 +36,7 @@ export interface UserUpdateRequest {
 
 export type ParkingSlotStatus = "available" | "occupied" | "reserved" | "maintenance";
 
-export type VehicleType = "car" | "motorcycle" | "bicycle" | "truck" | "other";
+export type VehicleType = "car" | "bike" | "ev" | "other" | "motorcycle" | "bicycle" | "truck";
 
 export interface Facility {
   id: number;
@@ -86,6 +86,23 @@ export interface Availability {
   occupied: number;
   reserved: number;
   occupancy_percentage: number;
+}
+
+export interface UnifiedFacilityIntelligence {
+  facility_id: number;
+  total_slots: number;
+  available_slots: number;
+  occupied_slots: number;
+  reserved_slots: number;
+  current_occupancy_percentage: number;
+  predicted_occupancy_percentage?: number;
+  predicted_availability_probability?: number;
+  expected_free_slots?: number;
+  queue_wait_minutes?: number;
+  recommendation?: string;
+  occupancy_risk?: string;
+  prediction_status: string;
+  reasoning: string[];
 }
 
 export type ReservationStatus = "pending" | "confirmed" | "cancelled" | "completed";

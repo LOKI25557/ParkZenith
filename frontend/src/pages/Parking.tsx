@@ -1,176 +1,243 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { parkingApi } from '../api/parking';
 import type { Facility, Availability } from '../types';
-import { ParkingCard } from '../components/parking/ParkingCard';
-import { SearchInput } from '../components/ui/SearchInput';
-import { Select } from '../components/ui/Select';
-import { LoadingSpinner } from '../components/ui/LoadingSpinner';
-import { EmptyState } from '../components/ui/EmptyState';
+import { ParkingFilters } from '../components/parking/ParkingFilters';
+import { ParkingList } from '../components/parking/ParkingList';
 import { Breadcrumb } from '../components/ui/Breadcrumb';
-import { MapPin, Zap } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 
-const Parking: React.FC = () => {
+export const Parking: React.FC = () => {
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [availabilities, setAvailabilities] = useState<Record<number, Availability>>({});
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedSort, setSelectedSort] = useState('recommended');
-  const [evFilter, setEvFilter] = useState(false);
+  const [selectedSort, setSelectedSort] = useState('default');
+  const [availableOnlyFilter, setAvailableOnlyFilter] = useState(false);
+  const [activeOnlyFilter, setActiveOnlyFilter] = useState(false);
+  const [roundTheClockFilter, setRoundTheClockFilter] = useState(false);
+
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchFacilities = async () => {
-      try {
-        setIsLoading(true);
-        const data = await parkingApi.getFacilities();
-        setFacilities(data);
+  const loadData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
 
-        // Fetch availability for each facility
-        const availMap: Record<number, Availability> = {};
-        await Promise.all(
-          data.map(async (fac) => {
-            try {
-              const a = await parkingApi.getFacilityAvailability(fac.id);
-              availMap[fac.id] = a;
-            } catch {
-              availMap[fac.id] = {
-                entity_id: fac.id,
-                total_slots: fac.total_slots || 80,
-                available: Math.round((fac.total_slots || 80) * 0.4),
-                occupied: Math.round((fac.total_slots || 80) * 0.5),
-                reserved: Math.round((fac.total_slots || 80) * 0.1),
-                occupancy_percentage: 60.0,
-              };
-            }
-          })
-        );
-        setAvailabilities(availMap);
-      } catch (err) {
-        console.error('Error fetching facilities:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+      const data = await parkingApi.getFacilities({ skip: 0, limit: 100 });
+      setFacilities(data);
 
-    fetchFacilities();
+      // Fetch availability for each facility concurrently
+      const availMap: Record<number, Availability> = {};
+      await Promise.all(
+        data.map(async (fac) => {
+          try {
+            const avail = await parkingApi.getFacilityAvailability(fac.id);
+            availMap[fac.id] = avail;
+          } catch {
+            // Keep real state without fabricating fake numbers
+          }
+        })
+      );
+      setAvailabilities(availMap);
+    } catch (err: any) {
+      console.error('Failed to load parking facilities:', err);
+      const msg = err.response?.data?.detail || err.message || 'Unable to connect to parking facilities service.';
+      setError(msg);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  const filteredFacilities = facilities
-    .filter((f) => {
-      const q = searchQuery.toLowerCase();
-      const matchName = f.name?.toLowerCase().includes(q);
-      const matchCity = f.city?.toLowerCase().includes(q);
-      const matchAddr = f.address?.toLowerCase().includes(q);
-      return matchName || matchCity || matchAddr;
-    })
-    .sort((a, b) => {
-      const aAvail = availabilities[a.id]?.available || 0;
-      const bAvail = availabilities[b.id]?.available || 0;
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
-      if (selectedSort === 'availability') return bAvail - aAvail;
-      if (selectedSort === 'capacity') return (b.total_slots || 0) - (a.total_slots || 0);
-      return a.id - b.id;
-    });
+  const clearAllFilters = () => {
+    setSearchQuery('');
+    setSelectedSort('default');
+    setAvailableOnlyFilter(false);
+    setActiveOnlyFilter(false);
+    setRoundTheClockFilter(false);
+  };
+
+  const hasActiveFilters = Boolean(
+    searchQuery.trim() ||
+    availableOnlyFilter ||
+    activeOnlyFilter ||
+    roundTheClockFilter ||
+    selectedSort !== 'default'
+  );
+
+  // Search, filter, and sort
+  const filteredFacilities = useMemo(() => {
+    return facilities
+      .filter((fac) => {
+        // Search query matching name, city, state, or address
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase().trim();
+          const name = fac.name?.toLowerCase() || '';
+          const address = fac.address?.toLowerCase() || '';
+          const city = fac.city?.toLowerCase() || '';
+          const state = fac.state?.toLowerCase() || '';
+          const matches = name.includes(q) || address.includes(q) || city.includes(q) || state.includes(q);
+          if (!matches) return false;
+        }
+
+        // Available bays only
+        if (availableOnlyFilter) {
+          const avail = availabilities[fac.id]?.available;
+          if (avail === undefined || avail <= 0) return false;
+        }
+
+        // Active/Open only
+        if (activeOnlyFilter && !fac.is_active) {
+          return false;
+        }
+
+        // 24/7 Access filter
+        if (roundTheClockFilter) {
+          const hasSpecificHours = Boolean(fac.operating_start_time && fac.operating_end_time);
+          if (hasSpecificHours) return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
+        const aAvail = availabilities[a.id]?.available ?? -1;
+        const bAvail = availabilities[b.id]?.available ?? -1;
+
+        if (selectedSort === 'availability') {
+          return bAvail - aAvail;
+        }
+        if (selectedSort === 'capacity') {
+          return (b.total_slots || 0) - (a.total_slots || 0);
+        }
+        if (selectedSort === 'occupancy') {
+          const aOcc = availabilities[a.id]?.occupancy_percentage ?? 100;
+          const bOcc = availabilities[b.id]?.occupancy_percentage ?? 100;
+          return aOcc - bOcc; // Lowest occupancy first
+        }
+        if (selectedSort === 'name') {
+          return a.name.localeCompare(b.name);
+        }
+        return a.id - b.id;
+      });
+  }, [facilities, availabilities, searchQuery, availableOnlyFilter, activeOnlyFilter, roundTheClockFilter, selectedSort]);
+
+  // Aggregate telemetry
+  const totalBaysAvailable = useMemo(() => {
+    return filteredFacilities.reduce((sum, fac) => {
+      const avail = availabilities[fac.id]?.available;
+      return sum + (typeof avail === 'number' ? avail : 0);
+    }, 0);
+  }, [filteredFacilities, availabilities]);
+
+  const totalCapacity = useMemo(() => {
+    return filteredFacilities.reduce((sum, fac) => sum + (fac.total_slots || 0), 0);
+  }, [filteredFacilities]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       {/* Header & Breadcrumb */}
       <div>
         <Breadcrumb items={[{ label: 'Find Parking' }]} />
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', gap: '1rem', marginTop: '0.75rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'space-between',
+            alignItems: 'flex-end',
+            gap: '1rem',
+            marginTop: '0.75rem',
+          }}
+        >
           <div>
             <h1 className="text-page-title">Parking Discovery</h1>
             <p className="text-body" style={{ marginTop: '4px' }}>
-              Real-time slot telemetry and automated reservation across connected garages.
+              Search and reserve parking spaces across live connected facilities.
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button
-              onClick={() => setEvFilter(!evFilter)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '8px 14px',
-                borderRadius: '10px',
-                fontSize: '0.8125rem',
-                fontWeight: 500,
-                backgroundColor: evFilter ? 'rgba(0, 229, 255, 0.2)' : 'rgba(255, 255, 255, 0.04)',
-                border: evFilter ? '1px solid var(--pz-secondary)' : '1px solid var(--pz-border-subtle)',
-                color: evFilter ? 'var(--pz-secondary)' : 'var(--pz-text-secondary)',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-              }}
-            >
-              <Zap size={15} /> EV 350kW Supercharge
-            </button>
-          </div>
+          <button
+            onClick={() => loadData()}
+            disabled={isLoading}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 14px',
+              borderRadius: '10px',
+              fontSize: '0.8125rem',
+              fontWeight: 500,
+              backgroundColor: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid var(--pz-border-subtle)',
+              color: 'var(--pz-text-secondary)',
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s',
+            }}
+          >
+            <RefreshCw size={14} className={isLoading ? 'spin-animation' : ''} />
+            Refresh Telemetry
+          </button>
         </div>
       </div>
 
-      {/* Search & Filter Toolbar */}
-      <div
-        className="glass-panel"
-        style={{
-          padding: '1rem 1.25rem',
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          gap: '1rem',
-        }}
-      >
-        <div style={{ flex: 1, minWidth: '240px' }}>
-          <SearchInput
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onClear={() => setSearchQuery('')}
-            placeholder="Search by facility name, street, or city..."
-          />
-        </div>
+      {/* Search & Filter Component */}
+      <ParkingFilters
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        selectedSort={selectedSort}
+        onSortChange={setSelectedSort}
+        availableOnly={availableOnlyFilter}
+        onToggleAvailableOnly={() => setAvailableOnlyFilter(!availableOnlyFilter)}
+        activeOnly={activeOnlyFilter}
+        onToggleActiveOnly={() => setActiveOnlyFilter(!activeOnlyFilter)}
+        roundTheClock={roundTheClockFilter}
+        onToggleRoundTheClock={() => setRoundTheClockFilter(!roundTheClockFilter)}
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={clearAllFilters}
+      />
 
-        <div style={{ width: '180px' }}>
-          <Select
-            value={selectedSort}
-            onChange={(e) => setSelectedSort(e.target.value)}
-            options={[
-              { value: 'recommended', label: 'AI Recommended' },
-              { value: 'availability', label: 'Most Available' },
-              { value: 'capacity', label: 'Total Capacity' },
-            ]}
-          />
-        </div>
-      </div>
-
-      {/* Facilities Grid */}
-      {isLoading ? (
-        <LoadingSpinner size="lg" label="Searching connected garages..." />
-      ) : filteredFacilities.length === 0 ? (
-        <EmptyState
-          icon={<MapPin size={28} />}
-          title="No Parking Facilities Found"
-          description={`No garages match '${searchQuery}'. Try expanding your search criteria.`}
-          actionLabel="Clear Search"
-          onAction={() => setSearchQuery('')}
-        />
-      ) : (
+      {/* Aggregate Telemetry Strip */}
+      {!isLoading && !error && facilities.length > 0 && (
         <div
           style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-            gap: '1.5rem',
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: '0.8125rem',
+            color: 'var(--pz-text-secondary)',
+            padding: '0 4px',
+            fontFamily: 'var(--font-mono)',
           }}
         >
-          {filteredFacilities.map((fac, idx) => (
-            <ParkingCard
-              key={fac.id}
-              facility={fac}
-              availability={availabilities[fac.id]}
-              distanceKm={0.4 + idx * 0.3}
-              hourlyRate={2.50 + (idx % 3) * 0.75}
-            />
-          ))}
+          <span>
+            Showing <strong style={{ color: '#FFFFFF' }}>{filteredFacilities.length}</strong> of{' '}
+            <strong style={{ color: '#FFFFFF' }}>{facilities.length}</strong> facilities
+          </span>
+          <span style={{ display: 'flex', gap: '16px' }}>
+            <span>
+              Available Bays: <strong style={{ color: 'var(--pz-success)' }}>{totalBaysAvailable}</strong>
+            </span>
+            <span>
+              Total Capacity: <strong style={{ color: '#FFFFFF' }}>{totalCapacity}</strong>
+            </span>
+          </span>
         </div>
       )}
+
+      {/* Parking Facilities Grid List */}
+      <ParkingList
+        facilities={filteredFacilities}
+        availabilities={availabilities}
+        isLoading={isLoading}
+        error={error}
+        hasFilters={hasActiveFilters}
+        searchQuery={searchQuery}
+        onRetry={loadData}
+        onClearFilters={clearAllFilters}
+      />
     </div>
   );
 };

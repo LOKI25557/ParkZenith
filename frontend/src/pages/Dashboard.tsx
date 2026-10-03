@@ -20,24 +20,6 @@ import {
   Activity,
 } from 'lucide-react';
 
-const generateDefaultSlots = (_facilityId?: number): Slot[] => {
-  const list: Slot[] = [];
-  const statuses: Slot['status'][] = ['available', 'occupied', 'available', 'reserved', 'available', 'occupied', 'available', 'occupied'];
-  for (let i = 1; i <= 16; i++) {
-    list.push({
-      id: i,
-      zone_id: 1,
-      slot_number: `B-${i < 10 ? '0' + i : i}`,
-      status: statuses[(i - 1) % statuses.length],
-      vehicle_type: 'car',
-      is_active: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
-  }
-  return list;
-};
-
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const { success, error: toastError } = useToast();
@@ -46,6 +28,7 @@ const Dashboard: React.FC = () => {
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [selectedFacility, setSelectedFacility] = useState<Facility | null>(null);
   const [availability, setAvailability] = useState<Availability | null>(null);
+  const [facilityAvailMap, setFacilityAvailMap] = useState<Record<number, Availability>>({});
   const [facilitySlots, setFacilitySlots] = useState<Slot[]>([]);
   const [activeSession, setActiveSession] = useState<ParkingSession | null>(null);
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -54,6 +37,28 @@ const Dashboard: React.FC = () => {
 
   // Real-time WebSocket hook subscribed to facility events
   const { latestMessage } = useWebSocket('*', selectedFacility?.id);
+
+  const handleSelectFacility = async (fac: Facility) => {
+    setSelectedFacility(fac);
+    try {
+      const avail = await parkingApi.getFacilityAvailability(fac.id);
+      setAvailability(avail);
+    } catch {
+      setAvailability(null);
+    }
+
+    try {
+      const zones = await parkingApi.getZones(fac.id);
+      if (zones && zones.length > 0) {
+        const slots = await parkingApi.getSlots(zones[0].id);
+        setFacilitySlots(slots);
+      } else {
+        setFacilitySlots([]);
+      }
+    } catch {
+      setFacilitySlots([]);
+    }
+  };
 
   // Fetch initial dashboard data
   useEffect(() => {
@@ -73,16 +78,22 @@ const Dashboard: React.FC = () => {
             const avail = await parkingApi.getFacilityAvailability(firstFac.id);
             setAvailability(avail);
           } catch {
-            // Calculate baseline if availability endpoint fails
-            setAvailability({
-              entity_id: firstFac.id,
-              total_slots: firstFac.total_slots || 50,
-              available: Math.round((firstFac.total_slots || 50) * 0.4),
-              occupied: Math.round((firstFac.total_slots || 50) * 0.5),
-              reserved: Math.round((firstFac.total_slots || 50) * 0.1),
-              occupancy_percentage: 60.0,
-            });
+            setAvailability(null);
           }
+
+          // Fetch availability for the top facilities for the hub cards
+          const availMap: Record<number, Availability> = {};
+          await Promise.all(
+            facs.slice(0, 4).map(async (f) => {
+              try {
+                const a = await parkingApi.getFacilityAvailability(f.id);
+                availMap[f.id] = a;
+              } catch {
+                // ignore if not seeded
+              }
+            })
+          );
+          setFacilityAvailMap(availMap);
 
           // Zones & Slots
           try {
@@ -90,10 +101,11 @@ const Dashboard: React.FC = () => {
             if (zones && zones.length > 0) {
               const slots = await parkingApi.getSlots(zones[0].id);
               setFacilitySlots(slots);
+            } else {
+              setFacilitySlots([]);
             }
           } catch {
-            // Default demo slots for visualization if database empty
-            setFacilitySlots(generateDefaultSlots(firstFac.id));
+            setFacilitySlots([]);
           }
 
           // AI Decision / Prediction
@@ -343,14 +355,14 @@ const Dashboard: React.FC = () => {
 
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
               <span style={{ fontSize: '1.75rem', fontWeight: 800, color: '#10B981', fontFamily: 'var(--font-mono)' }}>
-                {availability?.available ?? 18}
+                {availability ? availability.available : (selectedFacility ? '—' : '0')}
               </span>
               <span style={{ fontSize: '0.875rem', color: 'var(--pz-text-secondary)' }}>
-                / {availability?.total_slots ?? 50} Free Bays
+                / {availability?.total_slots ?? selectedFacility?.total_slots ?? 0} Free Bays
               </span>
             </div>
             <span style={{ fontSize: '0.8125rem', color: 'var(--pz-text-muted)', marginTop: '2px', display: 'block' }}>
-              {selectedFacility?.name || 'Metropolis Central Hub'}
+              {selectedFacility?.name || 'No Facility Selected'}
             </span>
           </div>
 
@@ -416,7 +428,7 @@ const Dashboard: React.FC = () => {
                 {facilities.slice(0, 4).map((f) => (
                   <button
                     key={f.id}
-                    onClick={() => setSelectedFacility(f)}
+                    onClick={() => handleSelectFacility(f)}
                     style={{
                       padding: '4px 10px',
                       borderRadius: '6px',
@@ -424,6 +436,7 @@ const Dashboard: React.FC = () => {
                       backgroundColor: selectedFacility?.id === f.id ? 'var(--pz-primary)' : 'rgba(255,255,255,0.04)',
                       color: '#FFFFFF',
                       border: '1px solid var(--pz-border-subtle)',
+                      cursor: 'pointer',
                     }}
                   >
                     {f.name}
@@ -522,6 +535,90 @@ const Dashboard: React.FC = () => {
           </Card>
         </div>
       </div>
+
+      {/* 4. Connected Facilities Discovery Strip */}
+      <Card style={{ padding: '1.25rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div>
+            <h3 style={{ fontSize: '1.0625rem', fontWeight: 600, color: '#FFFFFF' }}>Connected Garages</h3>
+            <p style={{ fontSize: '0.8125rem', color: 'var(--pz-text-secondary)', marginTop: '2px' }}>
+              Real-time telemetry and capacity across active locations.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            rightIcon={<ArrowRight size={14} />}
+            onClick={() => navigate('/parking')}
+          >
+            View All Parking ({facilities.length})
+          </Button>
+        </div>
+
+        {facilities.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--pz-text-secondary)', fontSize: '0.875rem' }}>
+            No parking facilities currently connected.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1rem' }}>
+            {facilities.slice(0, 3).map((fac) => {
+              const facAvail = facilityAvailMap[fac.id];
+              return (
+                <div
+                  key={fac.id}
+                  onClick={() => navigate(`/parking/${fac.id}`)}
+                  style={{
+                    padding: '1rem',
+                    borderRadius: '12px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                    border: '1px solid var(--pz-border-subtle)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    gap: '0.75rem',
+                    transition: 'border-color 0.2s, transform 0.2s',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--pz-secondary)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--pz-border-subtle)')}
+                >
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#FFFFFF' }}>
+                        {fac.name}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '0.6875rem',
+                          fontWeight: 600,
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          backgroundColor: fac.is_active ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
+                          color: fac.is_active ? 'var(--pz-success)' : 'var(--pz-error)',
+                        }}
+                      >
+                        {fac.is_active ? 'OPEN' : 'CLOSED'}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--pz-text-secondary)' }}>
+                      {fac.address} {fac.city ? `• ${fac.city}` : ''}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--pz-border-subtle)', paddingTop: '0.5rem', fontSize: '0.75rem' }}>
+                    <span style={{ color: 'var(--pz-text-muted)' }}>
+                      {facAvail?.available !== undefined ? `${facAvail.available} Bays Open` : `${fac.total_slots || 0} Total Bays`}
+                    </span>
+                    <span style={{ color: 'var(--pz-secondary)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                      Explore &rarr;
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
 
       <style>{`
         @media (max-width: 1024px) {

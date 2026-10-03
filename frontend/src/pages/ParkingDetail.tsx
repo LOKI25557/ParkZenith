@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { parkingApi } from '../api/parking';
 import { reservationsApi } from '../api/reservations';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../components/ui/Toast';
 import type { Facility, Zone, Slot, Availability } from '../types';
 import { SlotGrid } from '../components/parking/SlotGrid';
@@ -12,39 +13,28 @@ import { Modal } from '../components/ui/Modal';
 import { FormField } from '../components/ui/FormField';
 import { Breadcrumb } from '../components/ui/Breadcrumb';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { ErrorState } from '../components/ErrorState';
+import { EmptyState } from '../components/ui/EmptyState';
 import {
   MapPin,
   Clock,
-  Zap,
   ShieldCheck,
   Layers,
   ArrowRight,
+  ArrowLeft,
   Sparkles,
+  CheckCircle2,
+  XCircle,
+  Copy,
+  Calendar,
 } from 'lucide-react';
 
-const generateDefaultSlots = (_facId?: number): Slot[] => {
-  const list: Slot[] = [];
-  const statuses: Slot['status'][] = ['available', 'occupied', 'available', 'reserved', 'available', 'occupied', 'available', 'maintenance'];
-  for (let i = 1; i <= 24; i++) {
-    list.push({
-      id: i,
-      zone_id: 1,
-      slot_number: `C-${i < 10 ? '0' + i : i}`,
-      status: statuses[(i - 1) % statuses.length],
-      vehicle_type: 'car',
-      is_active: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
-  }
-  return list;
-};
-
-const ParkingDetail: React.FC = () => {
+export const ParkingDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const facilityId = Number(id);
   const navigate = useNavigate();
-  const { success, error: toastError } = useToast();
+  const { user, isAuthenticated } = useAuth();
+  const { success, error: toastError, info } = useToast();
 
   const [facility, setFacility] = useState<Facility | null>(null);
   const [zones, setZones] = useState<Zone[]>([]);
@@ -55,59 +45,83 @@ const ParkingDetail: React.FC = () => {
   const [isReserveModalOpen, setIsReserveModalOpen] = useState(false);
   const [reserveHours, setReserveHours] = useState(2);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [isLoading, setIsLoading] = useState(true);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Facility-specific WebSocket connection
-  const { latestMessage } = useWebSocket('*', facilityId);
+  const { latestMessage } = useWebSocket('*', facilityId || undefined);
 
-  // Fetch facility details, zones, and availability
-  useEffect(() => {
-    if (!facilityId) return;
+  // Load facility, zones, and availability
+  const loadFacilityData = useCallback(async () => {
+    if (!facilityId || isNaN(facilityId)) {
+      setError('Invalid facility ID specified.');
+      setIsLoading(false);
+      return;
+    }
 
-    const loadData = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      // Fetch facility details
+      const fac = await parkingApi.getFacility(facilityId);
+      setFacility(fac);
+
+      // Fetch availability
       try {
-        setIsLoading(true);
-        const fac = await parkingApi.getFacility(facilityId);
-        setFacility(fac);
+        const avail = await parkingApi.getFacilityAvailability(facilityId);
+        setAvailability(avail);
+      } catch {
+        // Availability might not be seeded yet
+        setAvailability(null);
+      }
 
-        try {
-          const avail = await parkingApi.getFacilityAvailability(facilityId);
-          setAvailability(avail);
-        } catch {
-          // Fallback
-          setAvailability({
-            entity_id: facilityId,
-            total_slots: fac.total_slots || 60,
-            available: Math.round((fac.total_slots || 60) * 0.4),
-            occupied: Math.round((fac.total_slots || 60) * 0.5),
-            reserved: Math.round((fac.total_slots || 60) * 0.1),
-            occupancy_percentage: 60.0,
-          });
-        }
-
+      // Fetch zones
+      try {
         const zList = await parkingApi.getZones(facilityId);
         setZones(zList);
 
         if (zList && zList.length > 0) {
           const firstZone = zList[0];
           setSelectedZone(firstZone);
-          const sList = await parkingApi.getSlots(firstZone.id);
-          setSlots(sList);
-        } else {
-          // Generate default slots if zone is empty
-          setSlots(generateDefaultSlots(facilityId));
-        }
-      } catch (err) {
-        console.error('Error loading facility details:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
 
-    loadData();
+          // Fetch slots for first zone
+          setSlotsLoading(true);
+          try {
+            const sList = await parkingApi.getSlots(firstZone.id);
+            setSlots(sList);
+          } catch {
+            setSlots([]);
+          } finally {
+            setSlotsLoading(false);
+          }
+        } else {
+          setSelectedZone(null);
+          setSlots([]);
+        }
+      } catch {
+        setZones([]);
+        setSlots([]);
+      }
+    } catch (err: any) {
+      console.error('Error loading facility details:', err);
+      if (err.response?.status === 404) {
+        setError('The requested parking facility could not be found.');
+      } else {
+        setError(err.response?.data?.detail || 'Failed to load facility data from network.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
   }, [facilityId]);
 
-  // Handle incoming real-time events
+  useEffect(() => {
+    loadFacilityData();
+  }, [loadFacilityData]);
+
+  // Handle incoming real-time telemetry events
   useEffect(() => {
     if (!latestMessage) return;
 
@@ -136,23 +150,39 @@ const ParkingDetail: React.FC = () => {
 
   const handleZoneChange = async (zone: Zone) => {
     setSelectedZone(zone);
+    setSlotsLoading(true);
     try {
       const sList = await parkingApi.getSlots(zone.id);
       setSlots(sList);
-    } catch {
-      setSlots(generateDefaultSlots(facilityId));
+    } catch (err) {
+      console.error('Failed to load slots for zone:', err);
+      setSlots([]);
+    } finally {
+      setSlotsLoading(false);
     }
   };
 
   const handleSlotSelect = (slot: Slot) => {
-    if (slot.status === 'available') {
-      setSelectedSlot(slot);
-      setIsReserveModalOpen(true);
+    if (slot.status !== 'available') return;
+
+    if (!isAuthenticated) {
+      info('Please sign in to your ParkZenith account to complete a reservation.', 'Authentication Required');
+      navigate(`/login?redirect=/parking/${facilityId}`);
+      return;
     }
+
+    setSelectedSlot(slot);
+    setIsReserveModalOpen(true);
   };
 
   const handleConfirmReservation = async () => {
     if (!selectedSlot) return;
+
+    if (!isAuthenticated) {
+      navigate(`/login?redirect=/parking/${facilityId}`);
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -173,6 +203,16 @@ const ParkingDetail: React.FC = () => {
         prev.map((s) => (s.id === selectedSlot.id ? { ...s, status: 'reserved' } : s))
       );
 
+      // Also refresh availability
+      if (facilityId) {
+        try {
+          const updatedAvail = await parkingApi.getFacilityAvailability(facilityId);
+          setAvailability(updatedAvail);
+        } catch {
+          // Ignore
+        }
+      }
+
       navigate('/reservations');
     } catch (err: any) {
       const msg = err.response?.data?.detail || 'Failed to complete reservation. Please try again.';
@@ -182,122 +222,302 @@ const ParkingDetail: React.FC = () => {
     }
   };
 
-  if (isLoading && !facility) {
-    return <LoadingSpinner size="lg" label="Connecting to facility sub-meter telemetry..." />;
+  const copyAddressToClipboard = () => {
+    if (!facility) return;
+    const fullAddress = `${facility.address}${facility.city ? `, ${facility.city}` : ''}${facility.state ? ` ${facility.state}` : ''}`;
+    navigator.clipboard?.writeText(fullAddress);
+    info('Facility address copied to clipboard.', 'Address Copied');
+  };
+
+  if (isLoading) {
+    return (
+      <div style={{ padding: '3rem 0' }}>
+        <LoadingSpinner size="lg" label="Connecting to facility telemetry sensors..." />
+      </div>
+    );
   }
+
+  if (error || !facility) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <Breadcrumb
+          items={[
+            { label: 'Find Parking', href: '/parking' },
+            { label: 'Facility Detail' },
+          ]}
+        />
+        <ErrorState
+          title="Facility Unavailable"
+          message={error || "We couldn't retrieve information for this parking garage."}
+          onRetry={loadFacilityData}
+        />
+        <div style={{ textAlign: 'center' }}>
+          <Button
+            variant="outline"
+            leftIcon={<ArrowLeft size={16} />}
+            onClick={() => navigate('/parking')}
+          >
+            Back to Parking Discovery
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const isOpen = facility.is_active;
+  const operatingHours = facility.operating_start_time && facility.operating_end_time
+    ? `${facility.operating_start_time} - ${facility.operating_end_time}`
+    : 'Open 24/7';
+
+  const totalSlotsCount = availability?.total_slots ?? facility.total_slots ?? 0;
+  const availableSlotsCount = availability?.available ?? slots.filter((s) => s.status === 'available').length;
+  const occupiedSlotsCount = availability?.occupied ?? slots.filter((s) => s.status === 'occupied').length;
+  const reservedSlotsCount = availability?.reserved ?? slots.filter((s) => s.status === 'reserved').length;
+  const occupancyPercentage = availability?.occupancy_percentage ?? (
+    totalSlotsCount > 0 ? Math.round((occupiedSlotsCount / totalSlotsCount) * 100) : 0
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      {/* Breadcrumb Navigation */}
-      <Breadcrumb
-        items={[
-          { label: 'Find Parking', href: '/parking' },
-          { label: facility?.name || 'Facility Detail' },
-        ]}
-      />
+      {/* Breadcrumb Navigation & Back Link */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+        <Breadcrumb
+          items={[
+            { label: 'Find Parking', href: '/parking' },
+            { label: facility.name },
+          ]}
+        />
+
+        <Button
+          variant="ghost"
+          size="sm"
+          leftIcon={<ArrowLeft size={14} />}
+          onClick={() => navigate('/parking')}
+        >
+          Back to Facilities
+        </Button>
+      </div>
 
       {/* Facility Header Card */}
       <Card glow="cyan">
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1.5rem' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--pz-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                ✦ SUB-METER AR SENSING HUB
+          <div style={{ flex: 1, minWidth: '280px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  padding: '2px 8px',
+                  borderRadius: '9999px',
+                  backgroundColor: isOpen ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
+                  color: isOpen ? 'var(--pz-success)' : 'var(--pz-error)',
+                  border: `1px solid ${isOpen ? 'rgba(16, 185, 129, 0.3)' : 'rgba(244, 63, 94, 0.3)'}`,
+                }}
+              >
+                {isOpen ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+                {isOpen ? 'OPERATIONAL' : 'INACTIVE'}
               </span>
-              <span className="telemetry-pulse" />
+
+              <span style={{ fontSize: '0.75rem', color: 'var(--pz-secondary)', fontFamily: 'var(--font-mono)' }}>
+                ID #{facility.id}
+              </span>
             </div>
 
-            <h1 className="text-page-title" style={{ color: '#FFFFFF' }}>
-              {facility?.name || 'Metropolis Central Garage'}
+            <h1 className="text-page-title" style={{ color: '#FFFFFF', marginBottom: '8px' }}>
+              {facility.name}
             </h1>
 
-            <p style={{ fontSize: '0.9375rem', color: 'var(--pz-text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-              <MapPin size={16} color="var(--pz-secondary)" />
-              {facility?.address} {facility?.city ? `• ${facility.city}` : ''}
-            </p>
+            {facility.description && (
+              <p style={{ fontSize: '0.9375rem', color: 'var(--pz-text-secondary)', marginBottom: '10px', lineHeight: 1.5 }}>
+                {facility.description}
+              </p>
+            )}
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <p style={{ fontSize: '0.875rem', color: 'var(--pz-text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
+                <MapPin size={15} color="var(--pz-secondary)" />
+                {facility.address}
+                {facility.city ? `, ${facility.city}` : ''}
+                {facility.state ? ` ${facility.state}` : ''}
+                {facility.postal_code ? ` ${facility.postal_code}` : ''}
+              </p>
+
+              <button
+                type="button"
+                onClick={copyAddressToClipboard}
+                title="Copy address"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--pz-text-muted)',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '2px',
+                }}
+              >
+                <Copy size={13} />
+              </button>
+            </div>
           </div>
 
-          {/* Rate & Live Availability */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-            <div style={{ textAlign: 'right' }}>
-              <span style={{ fontSize: '1.75rem', fontWeight: 800, color: '#FFFFFF', fontFamily: 'var(--font-mono)' }}>
-                $3.50
+          {/* Live Availability Telemetry Box */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            <div
+              style={{
+                padding: '12px 20px',
+                borderRadius: '14px',
+                backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                border: '1px solid rgba(16, 185, 129, 0.25)',
+                textAlign: 'center',
+                minWidth: '110px',
+              }}
+            >
+              <span style={{ fontSize: '1.75rem', fontWeight: 800, color: '#10B981', fontFamily: 'var(--font-mono)', display: 'block' }}>
+                {availableSlotsCount}
               </span>
-              <span style={{ fontSize: '0.8125rem', color: 'var(--pz-text-muted)', display: 'block' }}>/ hour</span>
+              <span style={{ fontSize: '0.6875rem', color: 'var(--pz-success)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.04em' }}>
+                Open Bays
+              </span>
             </div>
 
-            <div style={{ padding: '10px 16px', borderRadius: '12px', backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', textAlign: 'center' }}>
-              <span style={{ fontSize: '1.5rem', fontWeight: 800, color: '#10B981', fontFamily: 'var(--font-mono)', display: 'block' }}>
-                {availability?.available ?? 18}
+            <div
+              style={{
+                padding: '12px 20px',
+                borderRadius: '14px',
+                backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid var(--pz-border-subtle)',
+                textAlign: 'center',
+                minWidth: '110px',
+              }}
+            >
+              <span style={{ fontSize: '1.75rem', fontWeight: 800, color: '#FFFFFF', fontFamily: 'var(--font-mono)', display: 'block' }}>
+                {totalSlotsCount}
               </span>
-              <span style={{ fontSize: '0.6875rem', color: 'var(--pz-success)', textTransform: 'uppercase', fontWeight: 600 }}>
-                Free Bays
+              <span style={{ fontSize: '0.6875rem', color: 'var(--pz-text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.04em' }}>
+                Total Slots
               </span>
             </div>
           </div>
         </div>
 
-        {/* Feature Badges */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '1.5rem', borderTop: '1px solid var(--pz-border-subtle)', paddingTop: '1.25rem' }}>
+        {/* Feature & Operating Info Row */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginTop: '1.5rem', borderTop: '1px solid var(--pz-border-subtle)', paddingTop: '1.25rem' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8125rem', color: 'var(--pz-text-secondary)' }}>
-            <Clock size={14} color="var(--pz-secondary)" /> 24/7 Monitored Access
+            <Clock size={14} color="var(--pz-secondary)" /> Hours: {operatingHours}
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8125rem', color: 'var(--pz-text-secondary)' }}>
-            <Zap size={14} color="var(--pz-secondary)" /> 350kW DC Ultra-Fast EV Charger
+            <ShieldCheck size={14} color="var(--pz-success)" /> Connected Telemetry
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8125rem', color: 'var(--pz-text-secondary)' }}>
-            <ShieldCheck size={14} color="var(--pz-success)" /> ALPR Express Automatic Lift
+            <Calendar size={14} color="var(--pz-secondary)" /> Density: {occupancyPercentage}% Occupied
           </span>
+          {reservedSlotsCount > 0 && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8125rem', color: 'var(--pz-warning)' }}>
+              • {reservedSlotsCount} Reserved
+            </span>
+          )}
         </div>
       </Card>
 
       {/* Zone Switcher */}
-      {zones.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Layers size={18} color="var(--pz-secondary)" />
-          <span style={{ fontSize: '0.875rem', color: 'var(--pz-text-secondary)', fontWeight: 500 }}>Select Deck / Sector:</span>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            {zones.map((z) => (
-              <button
-                key={z.id}
-                onClick={() => handleZoneChange(z)}
-                style={{
-                  padding: '6px 14px',
-                  borderRadius: '8px',
-                  fontSize: '0.8125rem',
-                  fontWeight: 500,
-                  backgroundColor: selectedZone?.id === z.id ? 'var(--pz-primary)' : 'rgba(255, 255, 255, 0.04)',
-                  color: '#FFFFFF',
-                  border: '1px solid var(--pz-border-subtle)',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                {z.name} ({z.total_slots || 30} Bays)
-              </button>
-            ))}
+      {zones.length > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Layers size={18} color="var(--pz-secondary)" />
+            <span style={{ fontSize: '0.875rem', color: 'var(--pz-text-secondary)', fontWeight: 500 }}>
+              Select Deck / Zone:
+            </span>
           </div>
+
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {zones.map((z) => {
+              const isSelected = selectedZone?.id === z.id;
+              return (
+                <button
+                  key={z.id}
+                  onClick={() => handleZoneChange(z)}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '10px',
+                    fontSize: '0.8125rem',
+                    fontWeight: 600,
+                    backgroundColor: isSelected ? 'var(--pz-primary)' : 'rgba(255, 255, 255, 0.04)',
+                    color: '#FFFFFF',
+                    border: isSelected ? '1px solid var(--pz-secondary)' : '1px solid var(--pz-border-subtle)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {z.name}
+                  {z.total_slots ? ` (${z.total_slots} Slots)` : ''}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div
+          style={{
+            padding: '1rem',
+            borderRadius: '12px',
+            backgroundColor: 'rgba(255, 255, 255, 0.02)',
+            border: '1px solid var(--pz-border-subtle)',
+            color: 'var(--pz-text-secondary)',
+            fontSize: '0.875rem',
+          }}
+        >
+          No individual zones configured for this facility.
         </div>
       )}
 
       {/* Live Slot Grid Matrix */}
-      <SlotGrid
-        slots={slots}
-        selectedSlot={selectedSlot}
-        onSlotSelect={handleSlotSelect}
-        zoneName={selectedZone?.name || 'Main Deck'}
-      />
+      {slotsLoading ? (
+        <div style={{ padding: '2rem 0' }}>
+          <LoadingSpinner size="md" label="Loading bay telemetry for selected zone..." />
+        </div>
+      ) : slots.length === 0 ? (
+        <EmptyState
+          icon={<Layers size={28} />}
+          title="No Slots Configured"
+          description={
+            selectedZone
+              ? `No parking slots are registered in "${selectedZone.name}" yet.`
+              : "No parking slots are currently mapped for this facility in the database."
+          }
+        />
+      ) : (
+        <SlotGrid
+          slots={slots}
+          selectedSlot={selectedSlot}
+          onSlotSelect={handleSlotSelect}
+          zoneName={selectedZone?.name || facility.name}
+        />
+      )}
 
       {/* Reservation Confirmation Modal */}
       <Modal
         isOpen={isReserveModalOpen}
         onClose={() => setIsReserveModalOpen(false)}
         title="Reserve Parking Bay"
-        description="Lock this space with guaranteed license plate entry sync."
+        description="Select your expected duration and confirm your reservation."
       >
         {selectedSlot && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            <div style={{ padding: '1rem', backgroundColor: 'rgba(26, 91, 255, 0.12)', borderRadius: '12px', border: '1px solid rgba(26, 91, 255, 0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div
+              style={{
+                padding: '1rem',
+                backgroundColor: 'rgba(26, 91, 255, 0.12)',
+                borderRadius: '12px',
+                border: '1px solid rgba(26, 91, 255, 0.3)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
               <div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--pz-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   Target Space
@@ -305,11 +525,15 @@ const ParkingDetail: React.FC = () => {
                 <h4 style={{ fontSize: '1.375rem', fontWeight: 800, color: '#FFFFFF', fontFamily: 'var(--font-mono)' }}>
                   Slot #{selectedSlot.slot_number}
                 </h4>
+                <span style={{ fontSize: '0.75rem', color: 'var(--pz-text-secondary)', textTransform: 'capitalize' }}>
+                  Type: {selectedSlot.vehicle_type}
+                </span>
               </div>
+
               <div style={{ textAlign: 'right' }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--pz-text-muted)' }}>Estimated Rate</span>
-                <span style={{ fontSize: '1.25rem', fontWeight: 700, color: '#FFFFFF', display: 'block', fontFamily: 'var(--font-mono)' }}>
-                  ${(3.50 * reserveHours).toFixed(2)}
+                <span style={{ fontSize: '0.75rem', color: 'var(--pz-text-muted)' }}>Status</span>
+                <span style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--pz-success)', display: 'block' }}>
+                  Available
                 </span>
               </div>
             </div>
@@ -340,7 +564,7 @@ const ParkingDetail: React.FC = () => {
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8125rem', color: 'var(--pz-text-secondary)' }}>
               <Sparkles size={14} color="var(--pz-secondary)" />
-              <span>ALPR Fast-Pass will automatically lift barrier upon entry.</span>
+              <span>Slot will be locked for user: <strong>{user?.email || 'Active Account'}</strong></span>
             </div>
 
             <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
