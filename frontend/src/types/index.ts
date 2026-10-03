@@ -5,6 +5,8 @@ export interface User {
   phone?: string;
   vehicle_number?: string;
   is_active: boolean;
+  is_superuser?: boolean;
+  role?: string;
   created_at: string;
 }
 
