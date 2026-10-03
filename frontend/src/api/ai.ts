@@ -140,4 +140,18 @@ export const aiApi = {
     const response = await apiClient.get(`/heatmap/facility/${facilityId}`);
     return response.data;
   },
+
+  /**
+   * High-level summary overview of analytics metrics
+   */
+  getAnalyticsOverview: async (facilityId?: string | number): Promise<any> => {
+    try {
+      const response = await apiClient.get('/analytics/overview', {
+        params: facilityId ? { facility_id: String(facilityId) } : undefined,
+      });
+      return response.data;
+    } catch {
+      return null;
+    }
+  },
 };

@@ -56,6 +56,66 @@ export interface Facility {
   updated_at: string;
 }
 
+export interface FacilityCreateRequest {
+  name: string;
+  description?: string;
+  address: string;
+  city?: string;
+  state?: string;
+  postal_code?: string;
+  latitude?: number;
+  longitude?: number;
+  total_slots?: number;
+  operating_start_time?: string;
+  operating_end_time?: string;
+  is_active?: boolean;
+}
+
+export interface FacilityUpdateRequest {
+  name?: string;
+  description?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  postal_code?: string;
+  latitude?: number;
+  longitude?: number;
+  total_slots?: number;
+  operating_start_time?: string;
+  operating_end_time?: string;
+  is_active?: boolean;
+}
+
+export interface ZoneCreateRequest {
+  name: string;
+  description?: string;
+  floor_number?: number;
+  total_slots?: number;
+  is_active?: boolean;
+}
+
+export interface ZoneUpdateRequest {
+  name?: string;
+  description?: string;
+  floor_number?: number;
+  total_slots?: number;
+  is_active?: boolean;
+}
+
+export interface SlotCreateRequest {
+  slot_number: string;
+  status?: ParkingSlotStatus;
+  vehicle_type?: VehicleType;
+  is_active?: boolean;
+}
+
+export interface SlotUpdateRequest {
+  slot_number?: string;
+  status?: ParkingSlotStatus;
+  vehicle_type?: VehicleType;
+  is_active?: boolean;
+}
+
 export interface Zone {
   id: number;
   facility_id: number;
