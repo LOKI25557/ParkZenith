@@ -63,6 +63,13 @@ const Dashboard: React.FC = () => {
     } catch {
       setFacilitySlots([]);
     }
+
+    try {
+      const pred = await aiApi.getPrediction(fac.id);
+      setAiDecision(pred);
+    } catch {
+      setAiDecision(null);
+    }
   };
 
   // Fetch initial dashboard data
@@ -118,13 +125,7 @@ const Dashboard: React.FC = () => {
             const pred = await aiApi.getPrediction(firstFac.id);
             setAiDecision(pred);
           } catch {
-            setAiDecision({
-              availability_probability: 88.4,
-              expected_free_slots: 18,
-              forecast_occupancy: 64,
-              risk_level: 'LOW_RISK',
-              queue_wait_minutes: 2.1,
-            });
+            setAiDecision(null);
           }
         }
 
@@ -523,10 +524,18 @@ const Dashboard: React.FC = () => {
             </div>
 
             <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#00E5FF', fontFamily: 'var(--font-mono)' }}>
-              {aiDecision?.availability_probability?.toFixed(0) || '88'}%
+              {aiDecision?.availability_probability != null ? `${aiDecision.availability_probability.toFixed(0)}%` : '--'}
             </div>
             <span style={{ fontSize: '0.8125rem', color: 'var(--pz-text-secondary)', marginTop: '2px', display: 'block' }}>
-              High arrival certainty predicted (+20m window)
+              {aiDecision ? (
+                aiDecision.occupancy_risk === 'HIGH'
+                  ? 'High demand anticipated (+20m window)'
+                  : aiDecision.occupancy_risk === 'MEDIUM'
+                  ? 'Moderate availability (+20m window)'
+                  : 'High arrival certainty (+20m window)'
+              ) : (
+                'Real-time neural arrival estimation'
+              )}
             </span>
           </div>
 
@@ -621,27 +630,38 @@ const Dashboard: React.FC = () => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(255, 255, 255, 0.03)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
-                  <span style={{ color: 'var(--pz-text-secondary)' }}>Queue Latency</span>
+                  <span style={{ color: 'var(--pz-text-secondary)' }}>Gate Queue Latency</span>
                   <span style={{ color: 'var(--pz-secondary)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-                    {aiDecision?.queue_wait_minutes?.toFixed(1) || '2.1'} mins
+                    {aiDecision?.queue_wait_minutes != null ? `${aiDecision.queue_wait_minutes.toFixed(1)} mins` : '< 1 min'}
                   </span>
                 </div>
               </div>
 
               <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(255, 255, 255, 0.03)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
-                  <span style={{ color: 'var(--pz-text-secondary)' }}>Peak Egress Surge</span>
-                  <span style={{ color: 'var(--pz-warning)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-                    17:30 EDT (+45%)
+                  <span style={{ color: 'var(--pz-text-secondary)' }}>Occupancy Risk</span>
+                  <span
+                    style={{
+                      color:
+                        aiDecision?.occupancy_risk === 'HIGH'
+                          ? 'var(--pz-error)'
+                          : aiDecision?.occupancy_risk === 'MEDIUM'
+                          ? 'var(--pz-warning)'
+                          : 'var(--pz-success)',
+                      fontFamily: 'var(--font-mono)',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {aiDecision?.occupancy_risk ? `${aiDecision.occupancy_risk} RISK` : 'OPTIMAL'}
                   </span>
                 </div>
               </div>
 
               <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: 'rgba(255, 255, 255, 0.03)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
-                  <span style={{ color: 'var(--pz-text-secondary)' }}>Throughput</span>
-                  <span style={{ color: 'var(--pz-success)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-                    14.2 cars/min
+                  <span style={{ color: 'var(--pz-text-secondary)' }}>Forecast Occupancy</span>
+                  <span style={{ color: '#FFFFFF', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+                    {aiDecision?.forecast_occupancy != null ? `${aiDecision.forecast_occupancy.toFixed(0)}%` : '--'}
                   </span>
                 </div>
               </div>

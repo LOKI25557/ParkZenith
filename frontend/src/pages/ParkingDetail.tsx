@@ -5,7 +5,7 @@ import { reservationsApi } from '../api/reservations';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../components/ui/Toast';
-import type { Facility, Zone, Slot, Availability, ParkingSlotStatus } from '../types';
+import type { Facility, Zone, Slot, Availability, ParkingSlotStatus, UnifiedFacilityIntelligence } from '../types';
 import { SlotGrid } from '../components/parking/SlotGrid';
 import { SlotDetailsPanel } from '../components/parking/SlotDetailsPanel';
 import { AvailabilityIndicator } from '../components/parking/AvailabilityIndicator';
@@ -30,6 +30,7 @@ import {
   CheckCircle2,
   XCircle,
   Copy,
+  Brain,
 } from 'lucide-react';
 
 export const ParkingDetail: React.FC = () => {
@@ -44,6 +45,7 @@ export const ParkingDetail: React.FC = () => {
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [availability, setAvailability] = useState<Availability | null>(null);
+  const [aiIntelligence, setAiIntelligence] = useState<UnifiedFacilityIntelligence | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
   const [isReserveModalOpen, setIsReserveModalOpen] = useState(false);
   const [reserveHours, setReserveHours] = useState(2);
@@ -107,6 +109,14 @@ export const ParkingDetail: React.FC = () => {
       } catch {
         setZones([]);
         setSlots([]);
+      }
+
+      // Fetch AI predictive intelligence for this facility
+      try {
+        const intel = await parkingApi.getFacilityIntelligence(facilityId);
+        setAiIntelligence(intel);
+      } catch {
+        setAiIntelligence(null);
       }
     } catch (err: any) {
       console.error('Error loading facility details:', err);
@@ -493,6 +503,112 @@ export const ParkingDetail: React.FC = () => {
         connectionStatus={connectionStatus}
         onReconnect={reconnect}
       />
+
+      {/* AI Predictive Intelligence Ribbon */}
+      {aiIntelligence && (
+        <Card
+          glow="purple"
+          style={{
+            padding: '1.25rem 1.5rem',
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '1.5rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: '260px', flex: 1 }}>
+            <div
+              style={{
+                width: '46px',
+                height: '46px',
+                borderRadius: '12px',
+                backgroundColor: 'rgba(139, 92, 246, 0.15)',
+                border: '1px solid rgba(139, 92, 246, 0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <Brain size={22} color="#C084FC" />
+            </div>
+
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#C084FC', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  NEURAL ARRIVAL FORECAST (+20M ETA)
+                </span>
+                <span
+                  style={{
+                    fontSize: '0.6875rem',
+                    fontWeight: 600,
+                    padding: '1px 6px',
+                    borderRadius: '4px',
+                    backgroundColor:
+                      aiIntelligence.occupancy_risk === 'HIGH'
+                        ? 'rgba(244, 63, 94, 0.15)'
+                        : aiIntelligence.occupancy_risk === 'MEDIUM'
+                        ? 'rgba(245, 158, 11, 0.15)'
+                        : 'rgba(16, 185, 129, 0.15)',
+                    color:
+                      aiIntelligence.occupancy_risk === 'HIGH'
+                        ? 'var(--pz-error)'
+                        : aiIntelligence.occupancy_risk === 'MEDIUM'
+                        ? 'var(--pz-warning)'
+                        : 'var(--pz-success)',
+                  }}
+                >
+                  {aiIntelligence.occupancy_risk ? `${aiIntelligence.occupancy_risk} RISK` : 'OPTIMAL'}
+                </span>
+              </div>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--pz-text-secondary)', marginTop: '2px' }}>
+                {aiIntelligence.reasoning && aiIntelligence.reasoning.length > 0
+                  ? aiIntelligence.reasoning[0]
+                  : 'Real-time telemetry baseline forecasting bay availability upon your arrival.'}
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
+            <div style={{ textAlign: 'center' }}>
+              <span style={{ fontSize: '0.6875rem', color: 'var(--pz-text-muted)', display: 'block' }}>Arrival Probability</span>
+              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#00E5FF', fontFamily: 'var(--font-mono)' }}>
+                {aiIntelligence.predicted_availability_probability != null
+                  ? `${Math.round(
+                      aiIntelligence.predicted_availability_probability <= 1
+                        ? aiIntelligence.predicted_availability_probability * 100
+                        : aiIntelligence.predicted_availability_probability
+                    )}%`
+                  : '--'}
+              </span>
+            </div>
+
+            <div style={{ textAlign: 'center' }}>
+              <span style={{ fontSize: '0.6875rem', color: 'var(--pz-text-muted)', display: 'block' }}>Expected Free Bays</span>
+              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#10B981', fontFamily: 'var(--font-mono)' }}>
+                {aiIntelligence.expected_free_slots != null ? aiIntelligence.expected_free_slots : activeAvailability.available}
+              </span>
+            </div>
+
+            <div style={{ textAlign: 'center' }}>
+              <span style={{ fontSize: '0.6875rem', color: 'var(--pz-text-muted)', display: 'block' }}>Gate Latency</span>
+              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#FFFFFF', fontFamily: 'var(--font-mono)' }}>
+                {aiIntelligence.queue_wait_minutes != null ? `${aiIntelligence.queue_wait_minutes.toFixed(1)}m` : '< 1m'}
+              </span>
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate('/predictions')}
+              rightIcon={<ArrowRight size={14} />}
+            >
+              Predictions Hub
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {/* Zone Switcher */}
       {zones.length > 0 ? (

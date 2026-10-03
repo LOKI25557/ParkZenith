@@ -253,3 +253,120 @@ export type RealtimeParkingEvent =
   | ParkingSnapshotEvent
   | SlotStatusChangedEvent
   | OccupancyUpdatedEvent;
+
+// ==========================================
+// AI Predictive Intelligence & Forecasting Types
+// ==========================================
+
+export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+
+export interface AvailabilityPrediction {
+  facility_id: string;
+  eta_minutes?: number;
+  current_occupancy: number;
+  forecast_occupancy: number;
+  expected_free_slots: number;
+  availability_probability: number;
+  occupancy_risk: RiskLevel;
+  confidence: number;
+  prediction_status?: string;
+  availability_status?: string;
+  risk_level?: string;
+  queue_wait_minutes?: number;
+}
+
+export interface OccupancyForecast {
+  facility_id: number | string;
+  current_occupancy: number;
+  prediction_15: number;
+  prediction_30: number;
+  prediction_60: number;
+  confidence: number;
+  prediction_status?: string;
+}
+
+export interface QueuePrediction {
+  facility_id: string;
+  timestamp?: string;
+  current_queue_length?: number;
+  predicted_queue_length?: number;
+  expected_arrivals?: number;
+  expected_departures?: number;
+  expected_wait_minutes: number;
+  estimated_wait_minutes?: number;
+  queue_trend?: string;
+  congestion_level?: string;
+  congestion_status?: string;
+  confidence?: number;
+  prediction_status?: string;
+}
+
+export interface ParkingRecommendation {
+  rank: number;
+  facility_id: string;
+  facility_name: string;
+  recommendation_score: number;
+  availability_probability: number;
+  current_occupancy: number;
+  forecast_occupancy: number;
+  distance_km: number;
+  walking_distance_m?: number;
+  estimated_cost: number;
+  queue_wait_minutes?: number;
+  occupancy_risk?: RiskLevel;
+  confidence?: number;
+  reason?: string;
+}
+
+export interface RecommendationsResponse {
+  recommendations: ParkingRecommendation[];
+  total_candidates: number;
+  returned_results: number;
+}
+
+export interface RecommendationRequest {
+  latitude: number;
+  longitude: number;
+  eta_minutes?: number;
+  destination_latitude?: number;
+  destination_longitude?: number;
+  max_distance_km?: number;
+  max_results?: number;
+  max_parking_fee?: number;
+  parking_type?: string;
+  preferred_facility?: string;
+  accessibility_required?: boolean;
+  weights?: Record<string, number>;
+}
+
+export interface UnifiedDecision {
+  facility_id: string;
+  eta_minutes: number;
+  predicted_occupancy: number;
+  predicted_available_slots: number;
+  availability_probability: number;
+  queue_wait_minutes: number;
+  confidence: number;
+  recommendation: string;
+  alternative_facilities?: Array<{ facility_id: string; score: number }>;
+  reasoning?: string[];
+  prediction_status?: string;
+}
+
+export interface HeatmapZoneItem {
+  zone_id: string;
+  density_score: number;
+  occupancy_percentage: number;
+  occupied_slots: number;
+  total_slots: number;
+  intensity: number;
+}
+
+export interface ZoneAnalytics {
+  most_congested_zones: string[];
+  least_occupied_zones: string[];
+  average_density: number;
+  peak_congestion_periods: Array<{ period: string; density: number }>;
+  heatmap_summaries: Record<string, string>;
+  zones: HeatmapZoneItem[];
+}
