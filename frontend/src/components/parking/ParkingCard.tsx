@@ -4,12 +4,16 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { MapPin, Clock, ArrowRight, ShieldCheck, CheckCircle2, XCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { NavigationButton } from '../maps/NavigationButton';
+import type { Coordinates } from '../../utils/navigation';
 
 export interface ParkingCardProps {
   facility: Facility;
   availability?: Availability | null;
   distanceKm?: number;
   hourlyRate?: number;
+  userLocation?: Coordinates | null;
+  isSelected?: boolean;
 }
 
 export const ParkingCard: React.FC<ParkingCardProps> = ({
@@ -17,6 +21,8 @@ export const ParkingCard: React.FC<ParkingCardProps> = ({
   availability,
   distanceKm,
   hourlyRate,
+  userLocation,
+  isSelected = false,
 }) => {
   const navigate = useNavigate();
 
@@ -42,6 +48,7 @@ export const ParkingCard: React.FC<ParkingCardProps> = ({
   return (
     <Card
       interactive
+      glow={isSelected ? 'cyan' : 'none'}
       onClick={() => navigate(`/parking/${facility.id}`)}
       style={{
         display: 'flex',
@@ -49,6 +56,8 @@ export const ParkingCard: React.FC<ParkingCardProps> = ({
         justifyContent: 'space-between',
         height: '100%',
         padding: '1.25rem',
+        border: isSelected ? '1px solid var(--pz-secondary)' : undefined,
+        boxShadow: isSelected ? '0 0 20px rgba(0, 229, 255, 0.25)' : undefined,
       }}
     >
       <div>
@@ -223,6 +232,14 @@ export const ParkingCard: React.FC<ParkingCardProps> = ({
         >
           View Details
         </Button>
+
+        <NavigationButton
+          facility={facility}
+          userLocation={userLocation}
+          variant="outline"
+          size="sm"
+          label="Directions"
+        />
 
         <Button
           variant="primary"

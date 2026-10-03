@@ -18,6 +18,7 @@ import {
   Search,
   ArrowRight,
   Activity,
+  Map as MapIcon,
 } from 'lucide-react';
 
 import { ConnectionStatusBadge } from '../components/parking/ConnectionStatusBadge';
@@ -334,6 +335,14 @@ const Dashboard: React.FC = () => {
             onClick={() => navigate('/reservations')}
           >
             My Reservations
+          </Button>
+          <Button
+            variant="outline"
+            size="md"
+            leftIcon={<MapIcon size={16} />}
+            onClick={() => navigate('/parking?view=map')}
+          >
+            Parking Map
           </Button>
           <Button
             variant="ai"

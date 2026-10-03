@@ -171,10 +171,13 @@ const Reservations: React.FC = () => {
               'Smart Parking Facility';
             const slotNumber = slot?.slot_number ? slot.slot_number : `#${res.slot_id}`;
 
+            const targetFacility = facilitiesMap[1] || Object.values(facilitiesMap)[0] || null;
+
             return (
               <ReservationCard
                 key={res.id}
                 reservation={res}
+                facility={targetFacility}
                 facilityName={facilityName}
                 slotNumber={slotNumber}
                 onCancel={(id) => setCancellingId(id)}

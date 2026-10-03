@@ -1,12 +1,14 @@
 import React from 'react';
-import type { Reservation } from '../../types';
+import type { Reservation, Facility } from '../../types';
 import { Card } from '../ui/Card';
 import { StatusBadge } from '../ui/StatusBadge';
 import { Button } from '../ui/Button';
 import { Calendar, Clock, MapPin, XCircle, QrCode, PlayCircle } from 'lucide-react';
+import { NavigationButton } from '../maps/NavigationButton';
 
 export interface ReservationCardProps {
   reservation: Reservation;
+  facility?: Facility | null;
   facilityName?: string;
   slotNumber?: string;
   onCancel?: (id: number) => void;
@@ -16,6 +18,7 @@ export interface ReservationCardProps {
 
 export const ReservationCard: React.FC<ReservationCardProps> = ({
   reservation,
+  facility,
   facilityName = 'Metropolis Garage',
   slotNumber,
   onCancel,
@@ -77,6 +80,14 @@ export const ReservationCard: React.FC<ReservationCardProps> = ({
           marginTop: '0.25rem',
         }}
       >
+        {facility && (
+          <NavigationButton
+            facility={facility}
+            variant="outline"
+            size="sm"
+            label="Directions"
+          />
+        )}
         {onCheckIn && (reservation.status === 'confirmed' || reservation.status === 'active') && (
           <Button
             variant="primary"

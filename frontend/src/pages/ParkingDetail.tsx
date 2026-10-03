@@ -31,7 +31,12 @@ import {
   XCircle,
   Copy,
   Brain,
+  Compass,
 } from 'lucide-react';
+import { ParkingMap } from '../components/maps/ParkingMap';
+import { NavigationButton } from '../components/maps/NavigationButton';
+import { useUserLocation } from '../hooks/useUserLocation';
+import { calculateHaversineDistanceKm } from '../utils/navigation';
 
 export const ParkingDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -50,6 +55,13 @@ export const ParkingDetail: React.FC = () => {
   const [isReserveModalOpen, setIsReserveModalOpen] = useState(false);
   const [reserveHours, setReserveHours] = useState(2);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // User location hook for distance calculation
+  const {
+    location: userLocation,
+    isLocating,
+    requestLocation,
+  } = useUserLocation();
 
   const [isLoading, setIsLoading] = useState(true);
   const [slotsLoading, setSlotsLoading] = useState(false);
@@ -609,6 +621,170 @@ export const ParkingDetail: React.FC = () => {
           </div>
         </Card>
       )}
+
+      {/* Facility Location & Navigation Section */}
+      <Card
+        style={{
+          padding: '1.5rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '1.25rem',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <MapPin size={18} color="var(--pz-secondary)" />
+            <h3 style={{ fontSize: '1.0625rem', fontWeight: 600, color: '#FFFFFF' }}>
+              Facility Location &amp; Directions
+            </h3>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {userLocation ? (
+              <span
+                style={{
+                  fontSize: '0.75rem',
+                  color: 'var(--pz-secondary)',
+                  fontFamily: 'var(--font-mono)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                📍 GPS Active: {calculateHaversineDistanceKm(userLocation, {
+                  latitude: Number(facility.latitude),
+                  longitude: Number(facility.longitude),
+                }) ?? '--'} km away
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={requestLocation}
+                disabled={isLocating}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  fontSize: '0.75rem',
+                  backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                  border: '1px solid var(--pz-border-subtle)',
+                  color: 'var(--pz-text-secondary)',
+                  cursor: isLocating ? 'wait' : 'pointer',
+                }}
+              >
+                <Compass size={12} />
+                {isLocating ? 'Acquiring...' : 'Check My Distance'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="parking-detail-location-grid">
+          {/* Embedded Leaflet Map */}
+          <div style={{ minHeight: '260px', height: '260px', borderRadius: '12px', overflow: 'hidden' }}>
+            <ParkingMap
+              facilities={[facility]}
+              selectedFacilityId={facility.id}
+              singleFacilityMode
+              height={260}
+              userLocation={userLocation}
+              onRequestUserLocation={requestLocation}
+              isLocating={isLocating}
+              emptyMessage="No coordinates mapped for this facility. Directions available via address navigation."
+            />
+          </div>
+
+          {/* Location Summary and Action Panel */}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: '1rem',
+              backgroundColor: 'rgba(255, 255, 255, 0.02)',
+              border: '1px solid var(--pz-border-subtle)',
+              borderRadius: '12px',
+              padding: '1.25rem',
+            }}
+          >
+            <div>
+              <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Physical Address
+              </span>
+              <p style={{ fontSize: '0.9375rem', fontWeight: 500, color: '#FFFFFF', marginTop: '4px', lineHeight: 1.4 }}>
+                {facility.address}
+                {facility.city ? `, ${facility.city}` : ''}
+                {facility.state ? `, ${facility.state}` : ''}
+                {facility.postal_code ? ` ${facility.postal_code}` : ''}
+              </p>
+
+              {facility.latitude != null && facility.longitude != null && (
+                <div style={{ marginTop: '8px', fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--pz-text-muted)' }}>
+                  <span>Coordinates: {Number(facility.latitude).toFixed(4)}°, {Number(facility.longitude).toFixed(4)}°</span>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <NavigationButton
+                facility={facility}
+                userLocation={userLocation}
+                variant="primary"
+                size="md"
+                label="Get Turn-by-Turn Directions"
+              />
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  style={{ flex: 1 }}
+                  leftIcon={<Copy size={13} />}
+                  onClick={() => {
+                    const fullAddr = [facility.address, facility.city, facility.state, facility.postal_code]
+                      .filter(Boolean)
+                      .join(', ');
+                    navigator.clipboard.writeText(fullAddr);
+                    success('Full address copied to clipboard.', 'Address Copied');
+                  }}
+                >
+                  Copy Address
+                </Button>
+
+                {facility.latitude != null && facility.longitude != null && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    style={{ flex: 1 }}
+                    leftIcon={<Copy size={13} />}
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${facility.latitude}, ${facility.longitude}`);
+                      success('GPS coordinates copied to clipboard.', 'Coordinates Copied');
+                    }}
+                  >
+                    Copy GPS
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <style>{`
+        .parking-detail-location-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 1.25rem;
+        }
+        @media (max-width: 768px) {
+          .parking-detail-location-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
 
       {/* Zone Switcher */}
       {zones.length > 0 ? (

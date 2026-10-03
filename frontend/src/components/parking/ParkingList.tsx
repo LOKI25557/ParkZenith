@@ -4,6 +4,7 @@ import { ParkingCard } from './ParkingCard';
 import { ParkingEmptyState } from './ParkingEmptyState';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { ErrorState } from '../ErrorState';
+import { calculateHaversineDistanceKm, type Coordinates } from '../../utils/navigation';
 
 export interface ParkingListProps {
   facilities: Facility[];
@@ -12,6 +13,9 @@ export interface ParkingListProps {
   error?: string | null;
   hasFilters: boolean;
   searchQuery?: string;
+  selectedFacilityId?: number | null;
+  userLocation?: Coordinates | null;
+  layout?: 'grid' | 'compact';
   onRetry?: () => void;
   onClearFilters?: () => void;
 }
@@ -23,6 +27,9 @@ export const ParkingList: React.FC<ParkingListProps> = ({
   error,
   hasFilters,
   searchQuery,
+  selectedFacilityId,
+  userLocation,
+  layout = 'grid',
   onRetry,
   onClearFilters,
 }) => {
@@ -54,21 +61,41 @@ export const ParkingList: React.FC<ParkingListProps> = ({
     );
   }
 
+  const gridColumns =
+    layout === 'compact'
+      ? 'repeat(auto-fill, minmax(280px, 1fr))'
+      : 'repeat(auto-fill, minmax(320px, 1fr))';
+
   return (
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-        gap: '1.5rem',
+        gridTemplateColumns: gridColumns,
+        gap: layout === 'compact' ? '1rem' : '1.5rem',
       }}
     >
-      {facilities.map((fac) => (
-        <ParkingCard
-          key={fac.id}
-          facility={fac}
-          availability={availabilities[fac.id]}
-        />
-      ))}
+      {facilities.map((fac) => {
+        // Calculate real distance only when user location exists
+        const distanceKm =
+          userLocation && fac.latitude != null && fac.longitude != null
+            ? calculateHaversineDistanceKm(userLocation, {
+                latitude: Number(fac.latitude),
+                longitude: Number(fac.longitude),
+              }) ?? undefined
+            : undefined;
+
+        return (
+          <div key={fac.id} id={`facility-card-${fac.id}`}>
+            <ParkingCard
+              facility={fac}
+              availability={availabilities[fac.id]}
+              distanceKm={distanceKm}
+              userLocation={userLocation}
+              isSelected={selectedFacilityId === fac.id}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 };
