@@ -1,24 +1,38 @@
 import { apiClient } from './client';
-import type { Payment, PaymentMethod } from '../types';
+import type { Payment, PaymentProcessRequest } from '../types';
+
+export interface PaginationParams {
+  skip?: number;
+  limit?: number;
+}
 
 export const paymentsApi = {
-  getMyPayments: async (): Promise<Payment[]> => {
-    const response = await apiClient.get<Payment[]>('/api/payments/me');
-    return response.data;
+  getMyPayments: async (params?: PaginationParams): Promise<Payment[]> => {
+    const response = await apiClient.get<Payment[]>('/payments/me', {
+      params: {
+        skip: params?.skip ?? 0,
+        limit: params?.limit ?? 100,
+      },
+    });
+    return response.data || [];
   },
 
   getPayment: async (id: number): Promise<Payment> => {
-    const response = await apiClient.get<Payment>(`/api/payments/${id}`);
+    const response = await apiClient.get<Payment>(`/payments/${id}`);
     return response.data;
   },
 
-  createPayment: async (data: { session_id: number; amount: number; payment_method: PaymentMethod }): Promise<Payment> => {
-    const response = await apiClient.post<Payment>('/api/payments/', data);
+  getSessionPayment: async (sessionId: number): Promise<Payment> => {
+    const response = await apiClient.get<Payment>(`/payments/session/${sessionId}`);
     return response.data;
   },
 
-  processPayment: async (id: number, data: { simulate_success: boolean; transaction_id?: string; payment_method?: PaymentMethod }): Promise<Payment> => {
-    const response = await apiClient.post<Payment>(`/api/payments/${id}/process`, data);
+  processPayment: async (
+    id: number,
+    data: PaymentProcessRequest = { simulate_success: true }
+  ): Promise<Payment> => {
+    const response = await apiClient.post<Payment>(`/payments/${id}/process`, data);
     return response.data;
-  }
+  },
 };
+

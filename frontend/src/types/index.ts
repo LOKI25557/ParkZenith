@@ -159,9 +159,15 @@ export interface EnrichedSession extends ParkingSession {
   vehicleType?: VehicleType;
 }
 
-export type PaymentMethod = "credit_card" | "debit_card" | "wallet" | "cash";
+export type PaymentMethod = "cash" | "card" | "upi" | "online" | "credit_card" | "debit_card" | "wallet";
 
-export type PaymentStatus = "pending" | "completed" | "failed" | "refunded";
+export type PaymentStatus = "pending" | "success" | "failed" | "refunded" | "completed";
+
+export interface PaymentProcessRequest {
+  simulate_success?: boolean;
+  transaction_id?: string;
+  payment_method?: PaymentMethod;
+}
 
 export interface Payment {
   id: number;
@@ -170,10 +176,16 @@ export interface Payment {
   amount: number;
   payment_method: PaymentMethod;
   payment_status: PaymentStatus;
-  transaction_id?: string;
-  paid_at?: string;
+  transaction_id?: string | null;
+  paid_at?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface EnrichedPayment extends Payment {
+  facilityName?: string;
+  slotNumber?: string;
+  durationMinutes?: number;
 }
 
 export interface APIError {

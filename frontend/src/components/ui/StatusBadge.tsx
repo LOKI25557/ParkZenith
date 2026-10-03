@@ -45,7 +45,8 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
 
       // Payment
       case 'paid':
-        return { variant: 'success' as const, label: 'Paid', pulse: false };
+      case 'success':
+        return { variant: 'success' as const, label: 'Success', pulse: false };
       case 'failed':
         return { variant: 'error' as const, label: 'Failed', pulse: false };
       case 'pending':

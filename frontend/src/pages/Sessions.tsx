@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { sessionsApi } from '../api/sessions';
 import { parkingApi } from '../api/parking';
+import { paymentsApi } from '../api/payments';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../components/ui/Toast';
-import type { ParkingSession, Slot, Facility } from '../types';
+import type { ParkingSession, Slot, Facility, Payment } from '../types';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { StatusBadge } from '../components/ui/StatusBadge';
@@ -20,6 +21,7 @@ import {
   ShieldCheck,
   Download,
   Plus,
+  Zap,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -38,6 +40,8 @@ const Sessions: React.FC = () => {
 
   // Completed session summary for modal receipt
   const [completedSessionSummary, setCompletedSessionSummary] = useState<ParkingSession | null>(null);
+  const [sessionPayment, setSessionPayment] = useState<Payment | null>(null);
+  const [isSettling, setIsSettling] = useState<boolean>(false);
 
   // Live timer tick
   const [currentTime, setCurrentTime] = useState<number>(() => Date.now());
@@ -109,6 +113,18 @@ const Sessions: React.FC = () => {
     loadData();
   }, []);
 
+  // Fetch real payment for the completed session receipt
+  useEffect(() => {
+    if (!completedSessionSummary) {
+      setSessionPayment(null);
+      return;
+    }
+    paymentsApi
+      .getSessionPayment(completedSessionSummary.id)
+      .then((p) => setSessionPayment(p))
+      .catch(() => setSessionPayment(null));
+  }, [completedSessionSummary]);
+
   // Update timer every second for live session
   useEffect(() => {
     if (!activeSession) return;
@@ -169,6 +185,26 @@ const Sessions: React.FC = () => {
       toastError(msg, 'Session Error');
     } finally {
       setIsEnding(false);
+    }
+  };
+
+  const handleSettlePayment = async () => {
+    if (!sessionPayment) return;
+    setIsSettling(true);
+    try {
+      const processed = await paymentsApi.processPayment(sessionPayment.id, {
+        simulate_success: true,
+      });
+      setSessionPayment(processed);
+      success(
+        `Payment #${processed.id} settled successfully! Ref: ${processed.transaction_id}`,
+        'Payment Confirmed'
+      );
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || 'Could not settle payment.';
+      toastError(msg, 'Payment Error');
+    } finally {
+      setIsSettling(false);
     }
   };
 
@@ -463,7 +499,59 @@ const Sessions: React.FC = () => {
                   {user?.vehicle_number || 'REGISTERED'}
                 </span>
               </div>
+
+              <div>
+                <span style={{ fontSize: '0.6875rem', color: 'var(--pz-text-muted)', display: 'block' }}>TRANSACTION REF</span>
+                <span style={{ fontWeight: 600, color: 'var(--pz-secondary)', fontFamily: 'var(--font-mono)' }}>
+                  {sessionPayment?.transaction_id || (sessionPayment ? `PAY-#${sessionPayment.id}` : 'PENDING')}
+                </span>
+              </div>
+
+              <div>
+                <span style={{ fontSize: '0.6875rem', color: 'var(--pz-text-muted)', display: 'block' }}>PAYMENT STATUS</span>
+                <div style={{ marginTop: '2px' }}>
+                  <StatusBadge
+                    status={sessionPayment?.payment_status || 'pending'}
+                    type="payment"
+                    size="sm"
+                  />
+                </div>
+              </div>
             </div>
+
+            {sessionPayment?.payment_status === 'pending' && (
+              <div
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  backgroundColor: 'rgba(255, 179, 0, 0.1)',
+                  border: '1px solid var(--pz-warning)',
+                  borderRadius: '10px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <div style={{ textAlign: 'left' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--pz-warning)', display: 'block' }}>
+                    Payment Pending
+                  </span>
+                  <span style={{ fontSize: '0.6875rem', color: 'var(--pz-text-muted)' }}>
+                    Auto-debit pending authorization
+                  </span>
+                </div>
+
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<Zap size={14} />}
+                  onClick={handleSettlePayment}
+                  isLoading={isSettling}
+                >
+                  Settle Now
+                </Button>
+              </div>
+            )}
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8125rem', color: 'var(--pz-success)' }}>
               <ShieldCheck size={16} />
@@ -483,6 +571,18 @@ const Sessions: React.FC = () => {
               </Button>
 
               <Button
+                variant="outline"
+                size="md"
+                onClick={() => {
+                  setCompletedSessionSummary(null);
+                  navigate('/payments');
+                }}
+                style={{ flex: 1 }}
+              >
+                Billing Ledger
+              </Button>
+
+              <Button
                 variant="primary"
                 size="md"
                 onClick={() => {
@@ -491,7 +591,7 @@ const Sessions: React.FC = () => {
                 }}
                 style={{ flex: 1 }}
               >
-                Book Another Bay
+                Book Another
               </Button>
             </div>
           </div>
