@@ -192,6 +192,8 @@ export interface APIError {
   detail: string;
 }
 
+export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'reconnecting' | 'unauthorized' | 'offline';
+
 export interface WebSocketMessage {
   type: string;
   data: any;

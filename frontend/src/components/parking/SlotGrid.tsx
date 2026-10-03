@@ -9,6 +9,7 @@ export interface SlotGridProps {
   selectedSlot?: Slot | null;
   onSlotSelect?: (slot: Slot) => void;
   zoneName?: string;
+  recentlyUpdatedSlotIds?: Set<number> | number[];
 }
 
 export const SlotGrid: React.FC<SlotGridProps> = ({
@@ -16,9 +17,17 @@ export const SlotGrid: React.FC<SlotGridProps> = ({
   selectedSlot,
   onSlotSelect,
   zoneName = 'Main Deck',
+  recentlyUpdatedSlotIds,
 }) => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'occupied' | 'reserved'>('all');
   const [vehicleFilter, setVehicleFilter] = useState<string>('all');
+
+  const recentlyUpdatedSet = useMemo(() => {
+    if (!recentlyUpdatedSlotIds) return null;
+    return recentlyUpdatedSlotIds instanceof Set
+      ? recentlyUpdatedSlotIds
+      : new Set(recentlyUpdatedSlotIds);
+  }, [recentlyUpdatedSlotIds]);
 
   // Real-time authoritative counters from actual slot array
   const availableCount = useMemo(() => slots.filter((s) => s.status === 'available').length, [slots]);
@@ -371,6 +380,7 @@ export const SlotGrid: React.FC<SlotGridProps> = ({
               slot={slot}
               isSelected={selectedSlot?.id === slot.id}
               onSelect={onSlotSelect}
+              isRecentlyUpdated={Boolean(recentlyUpdatedSet?.has(slot.id))}
             />
           ))}
         </div>

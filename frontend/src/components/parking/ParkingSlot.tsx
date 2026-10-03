@@ -7,6 +7,7 @@ export interface ParkingSlotProps {
   isSelected?: boolean;
   onSelect?: (slot: Slot) => void;
   disabled?: boolean;
+  isRecentlyUpdated?: boolean;
 }
 
 export const ParkingSlot: React.FC<ParkingSlotProps> = ({
@@ -14,6 +15,7 @@ export const ParkingSlot: React.FC<ParkingSlotProps> = ({
   isSelected = false,
   onSelect,
   disabled = false,
+  isRecentlyUpdated = false,
 }) => {
   const isAvailable = slot.status === 'available';
 
@@ -136,9 +138,10 @@ export const ParkingSlot: React.FC<ParkingSlotProps> = ({
         outline: isSelected ? '2px solid var(--pz-secondary)' : 'none',
         outlineOffset: '2px',
       }}
-      aria-label={`Slot ${slot.slot_number}, ${slot.vehicle_type}, ${slot.status}${isSelected ? ', selected' : ''}`}
+      aria-label={`Slot ${slot.slot_number}, ${slot.vehicle_type}, ${slot.status}${isSelected ? ', selected' : ''}${isRecentlyUpdated ? ', recently updated' : ''}`}
       aria-pressed={isSelected}
-      className="parking-slot-item"
+      aria-live={isRecentlyUpdated ? 'polite' : 'off'}
+      className={`parking-slot-item ${isRecentlyUpdated ? 'slot-recently-updated' : ''}`}
     >
       {/* Top Header Row with Status & Vehicle icons */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '0 2px' }}>

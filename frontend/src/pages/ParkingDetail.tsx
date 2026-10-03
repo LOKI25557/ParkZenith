@@ -10,6 +10,7 @@ import { SlotGrid } from '../components/parking/SlotGrid';
 import { SlotDetailsPanel } from '../components/parking/SlotDetailsPanel';
 import { AvailabilityIndicator } from '../components/parking/AvailabilityIndicator';
 import { ConnectionStatusBadge } from '../components/parking/ConnectionStatusBadge';
+import { LiveDataTimestamp } from '../components/parking/LiveDataTimestamp';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
@@ -53,7 +54,8 @@ export const ParkingDetail: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   // Facility-specific WebSocket connection with connectionStatus and reconnect helper
-  const { latestMessage, connectionStatus, reconnect } = useWebSocket('*', facilityId || undefined);
+  const { latestMessage, connectionStatus, isStale, lastMessageAt, reconnect } = useWebSocket('*', facilityId || undefined);
+  const [recentlyUpdatedSlotIds, setRecentlyUpdatedSlotIds] = useState<Set<number>>(new Set());
 
   // Load facility, zones, and initial availability
   const loadFacilityData = useCallback(async () => {
@@ -130,10 +132,55 @@ export const ParkingDetail: React.FC = () => {
     if (latestMessage.event === 'slot_status_changed' && latestMessage.slot_id) {
       const slotId = latestMessage.slot_id;
       const newStatus = latestMessage.new_status as ParkingSlotStatus;
+      const oldStatus = latestMessage.old_status as ParkingSlotStatus;
+
+      // Pulse visual indicator on the affected slot
+      setRecentlyUpdatedSlotIds((prev) => {
+        const next = new Set(prev);
+        next.add(slotId);
+        return next;
+      });
+
+      setTimeout(() => {
+        setRecentlyUpdatedSlotIds((prev) => {
+          const next = new Set(prev);
+          next.delete(slotId);
+          return next;
+        });
+      }, 1600);
 
       setSlots((prev) =>
         prev.map((s) => (s.id === slotId ? { ...s, status: newStatus } : s))
       );
+
+      // Incrementally synchronize availability counters for zero-latency consistency
+      if (oldStatus !== newStatus) {
+        setAvailability((prev) => {
+          if (!prev) return prev;
+          let avail = prev.available;
+          let occ = prev.occupied;
+          let res = prev.reserved;
+
+          if (oldStatus === 'available') avail = Math.max(0, avail - 1);
+          else if (oldStatus === 'occupied') occ = Math.max(0, occ - 1);
+          else if (oldStatus === 'reserved') res = Math.max(0, res - 1);
+
+          if (newStatus === 'available') avail += 1;
+          else if (newStatus === 'occupied') occ += 1;
+          else if (newStatus === 'reserved') res += 1;
+
+          const total = prev.total_slots || (avail + occ + res);
+          const pct = total > 0 ? Math.round(((total - avail) / total) * 100) : prev.occupancy_percentage;
+
+          return {
+            ...prev,
+            available: avail,
+            occupied: occ,
+            reserved: res,
+            occupancy_percentage: pct,
+          };
+        });
+      }
 
       // If currently selected slot is changed to non-available by someone else, deselect it
       setSelectedSlot((prev) => {
@@ -333,12 +380,20 @@ export const ParkingDetail: React.FC = () => {
           ]}
         />
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <ConnectionStatusBadge
-            status={connectionStatus}
-            onReconnect={reconnect}
-            showStaleNotice={false}
-          />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+            <ConnectionStatusBadge
+              status={connectionStatus}
+              onReconnect={reconnect}
+              showStaleNotice={false}
+            />
+            <LiveDataTimestamp
+              timestamp={lastMessageAt}
+              status={connectionStatus}
+              isStale={isStale}
+              onRefresh={loadFacilityData}
+            />
+          </div>
 
           <Button
             variant="ghost"
@@ -525,6 +580,7 @@ export const ParkingDetail: React.FC = () => {
           selectedSlot={selectedSlot}
           onSlotSelect={handleSlotSelect}
           zoneName={selectedZone?.name || facility.name}
+          recentlyUpdatedSlotIds={recentlyUpdatedSlotIds}
         />
       )}
 

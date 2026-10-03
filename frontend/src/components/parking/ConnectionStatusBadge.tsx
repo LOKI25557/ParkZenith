@@ -1,5 +1,5 @@
 import React from 'react';
-import type { ConnectionStatus } from '../../services/websocket';
+import type { ConnectionStatus } from '../../types';
 import { RefreshCw, Wifi, WifiOff, Lock } from 'lucide-react';
 
 export interface ConnectionStatusBadgeProps {
@@ -59,6 +59,7 @@ export const ConnectionStatusBadge: React.FC<ConnectionStatusBadgeProps> = ({
           pulse: false,
           notice: 'Sign in to stream live sub-meter telemetry.',
         };
+      case 'offline':
       case 'disconnected':
       default:
         return {
@@ -75,6 +76,7 @@ export const ConnectionStatusBadge: React.FC<ConnectionStatusBadgeProps> = ({
   };
 
   const config = getBadgeConfig();
+  const isOffline = status === 'disconnected' || status === 'offline';
 
   return (
     <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
@@ -94,6 +96,8 @@ export const ConnectionStatusBadge: React.FC<ConnectionStatusBadgeProps> = ({
             letterSpacing: '0.02em',
           }}
           title={config.notice || config.text}
+          role="status"
+          aria-label={`WebSocket status: ${config.text}`}
         >
           <span
             style={{
@@ -110,7 +114,7 @@ export const ConnectionStatusBadge: React.FC<ConnectionStatusBadgeProps> = ({
           <span>{config.text}</span>
         </div>
 
-        {status === 'disconnected' && onReconnect && (
+        {isOffline && onReconnect && (
           <button
             type="button"
             onClick={onReconnect}
@@ -126,6 +130,7 @@ export const ConnectionStatusBadge: React.FC<ConnectionStatusBadgeProps> = ({
               border: '1px solid var(--pz-border-subtle)',
               color: 'var(--pz-secondary)',
               cursor: 'pointer',
+              transition: 'all 0.15s ease',
             }}
           >
             <RefreshCw size={11} /> Reconnect

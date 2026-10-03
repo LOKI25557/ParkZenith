@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 
 import { ConnectionStatusBadge } from '../components/parking/ConnectionStatusBadge';
+import { LiveDataTimestamp } from '../components/parking/LiveDataTimestamp';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
@@ -36,9 +37,11 @@ const Dashboard: React.FC = () => {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [aiDecision, setAiDecision] = useState<any>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [recentlyUpdatedSlotIds, setRecentlyUpdatedSlotIds] = useState<Set<number>>(new Set());
 
   // Real-time WebSocket hook subscribed to facility events
-  const { latestMessage, connectionStatus, reconnect } = useWebSocket('*', selectedFacility?.id);
+  const { latestMessage, connectionStatus, isConnected, isStale, lastMessageAt, reconnect } =
+    useWebSocket('*', selectedFacility?.id);
 
   const handleSelectFacility = async (fac: Facility) => {
     setSelectedFacility(fac);
@@ -156,46 +159,101 @@ const Dashboard: React.FC = () => {
     if (!latestMessage) return;
 
     if (latestMessage.event === 'slot_status_changed' && latestMessage.slot_id) {
+      const slotId = latestMessage.slot_id;
+      const newStatus = latestMessage.new_status as ParkingSlotStatus;
+      const oldStatus = latestMessage.old_status as ParkingSlotStatus;
+
+      // Pulse visual highlight on the changed slot
+      setRecentlyUpdatedSlotIds((prev) => {
+        const next = new Set(prev);
+        next.add(slotId);
+        return next;
+      });
+
+      setTimeout(() => {
+        setRecentlyUpdatedSlotIds((prev) => {
+          const next = new Set(prev);
+          next.delete(slotId);
+          return next;
+        });
+      }, 1600);
+
       setFacilitySlots((prev) =>
         prev.map((s) =>
-          s.id === latestMessage.slot_id ? { ...s, status: latestMessage.new_status as ParkingSlotStatus } : s
+          s.id === slotId ? { ...s, status: newStatus } : s
         )
       );
+
+      // Incrementally synchronize availability counters for the monitored facility
+      if (oldStatus !== newStatus) {
+        setAvailability((prev) => {
+          if (!prev) return prev;
+          let avail = prev.available;
+          let occ = prev.occupied;
+          let res = prev.reserved;
+
+          if (oldStatus === 'available') avail = Math.max(0, avail - 1);
+          else if (oldStatus === 'occupied') occ = Math.max(0, occ - 1);
+          else if (oldStatus === 'reserved') res = Math.max(0, res - 1);
+
+          if (newStatus === 'available') avail += 1;
+          else if (newStatus === 'occupied') occ += 1;
+          else if (newStatus === 'reserved') res += 1;
+
+          const total = prev.total_slots || (avail + occ + res);
+          const pct = total > 0 ? Math.round(((total - avail) / total) * 100) : prev.occupancy_percentage;
+
+          return {
+            ...prev,
+            available: avail,
+            occupied: occ,
+            reserved: res,
+            occupancy_percentage: pct,
+          };
+        });
+      }
     }
 
     if (latestMessage.event === 'occupancy_updated' && latestMessage.data) {
       const occ = latestMessage.data;
-      setAvailability((prev) =>
-        prev
-          ? {
-              ...prev,
-              available: occ.available_slots,
-              occupied: occ.occupied_slots,
-              reserved: occ.reserved_slots,
-              occupancy_percentage: occ.occupancy_percentage,
-              total_slots: occ.total_slots ?? prev.total_slots,
-            }
-          : {
-              entity_id: selectedFacility?.id || 0,
-              total_slots: occ.total_slots || 0,
-              available: occ.available_slots,
-              occupied: occ.occupied_slots,
-              reserved: occ.reserved_slots,
-              occupancy_percentage: occ.occupancy_percentage,
-            }
-      );
+      const updatedAvail: Availability = {
+        entity_id: selectedFacility?.id || 0,
+        total_slots: occ.total_slots || 0,
+        available: occ.available_slots,
+        occupied: occ.occupied_slots,
+        reserved: occ.reserved_slots,
+        occupancy_percentage: occ.occupancy_percentage,
+      };
+
+      setAvailability(updatedAvail);
+
+      if (selectedFacility?.id) {
+        setFacilityAvailMap((prev) => ({
+          ...prev,
+          [selectedFacility.id]: updatedAvail,
+        }));
+      }
     }
 
     if (latestMessage.event === 'parking_snapshot' && latestMessage.data) {
       const snap = latestMessage.data;
-      setAvailability({
+      const snapshotAvail: Availability = {
         entity_id: selectedFacility?.id || 0,
         total_slots: snap.total_slots,
         available: snap.available_slots,
         occupied: snap.occupied_slots,
         reserved: snap.reserved_slots,
         occupancy_percentage: snap.occupancy_percentage,
-      });
+      };
+
+      setAvailability(snapshotAvail);
+
+      if (selectedFacility?.id) {
+        setFacilityAvailMap((prev) => ({
+          ...prev,
+          [selectedFacility.id]: snapshotAvail,
+        }));
+      }
 
       if (snap.slots && Array.isArray(snap.slots)) {
         const snapMap = new Map<number, ParkingSlotStatus>(snap.slots.map((s: any) => [s.id, s.status as ParkingSlotStatus]));
@@ -377,9 +435,38 @@ const Dashboard: React.FC = () => {
         <Card style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Live Availability
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Live Availability
+                </span>
+                {isConnected && (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '1px 6px',
+                      borderRadius: '9999px',
+                      backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                      color: 'var(--pz-success)',
+                      fontSize: '0.625rem',
+                      fontWeight: 700,
+                      letterSpacing: '0.04em',
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: '5px',
+                        height: '5px',
+                        borderRadius: '50%',
+                        backgroundColor: '#10B981',
+                        animation: 'pulse-glow 2s infinite',
+                      }}
+                    />
+                    LIVE
+                  </span>
+                )}
+              </div>
               <Activity size={16} color="var(--pz-success)" />
             </div>
 
@@ -397,16 +484,31 @@ const Dashboard: React.FC = () => {
           </div>
 
           <div style={{ marginTop: '1rem', borderTop: '1px solid var(--pz-border-subtle)', paddingTop: '0.75rem' }}>
-            <div style={{ height: '6px', borderRadius: '9999px', backgroundColor: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-              <div
-                style={{
-                  width: `${availability?.occupancy_percentage || 65}%`,
-                  height: '100%',
-                  backgroundColor: '#10B981',
-                  borderRadius: '9999px',
-                }}
-              />
-            </div>
+            {(() => {
+              const occPct = availability?.occupancy_percentage ?? 0;
+              const barColor = occPct > 85 ? '#F43F5E' : occPct > 65 ? '#F59E0B' : '#10B981';
+              return (
+                <div>
+                  <div style={{ height: '6px', borderRadius: '9999px', backgroundColor: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        width: `${Math.min(100, Math.max(0, occPct))}%`,
+                        height: '100%',
+                        backgroundColor: barColor,
+                        borderRadius: '9999px',
+                        transition: 'width 0.5s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.3s ease',
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+                    <span style={{ fontSize: '0.6875rem', color: 'var(--pz-text-secondary)' }}>
+                      {occPct}% Occupied
+                    </span>
+                    <LiveDataTimestamp timestamp={lastMessageAt} status={connectionStatus} isStale={isStale} />
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </Card>
 
@@ -450,8 +552,11 @@ const Dashboard: React.FC = () => {
                   {selectedFacility.name}
                 </span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <ConnectionStatusBadge status={connectionStatus} onReconnect={reconnect} showStaleNotice={false} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                  <ConnectionStatusBadge status={connectionStatus} onReconnect={reconnect} showStaleNotice={false} />
+                  <LiveDataTimestamp timestamp={lastMessageAt} status={connectionStatus} isStale={isStale} />
+                </div>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -468,6 +573,7 @@ const Dashboard: React.FC = () => {
             <SlotGrid
               slots={facilitySlots}
               zoneName={selectedFacility.name}
+              recentlyUpdatedSlotIds={recentlyUpdatedSlotIds}
               onSlotSelect={() => {
                 navigate(`/parking/${selectedFacility.id}`);
               }}

@@ -4,8 +4,9 @@ import { parkingApi } from '../api/parking';
 import { reservationsApi } from '../api/reservations';
 import { sessionsApi } from '../api/sessions';
 import { useAuth } from '../hooks/useAuth';
+import { useWebSocket } from '../hooks/useWebSocket';
 import { useToast } from '../components/ui/Toast';
-import type { Facility, Zone, Slot, Reservation } from '../types';
+import type { Facility, Zone, Slot, Reservation, ParkingSlotStatus } from '../types';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Breadcrumb } from '../components/ui/Breadcrumb';
@@ -60,6 +61,32 @@ export const CreateReservation: React.FC = () => {
   const [isCheckingIn, setIsCheckingIn] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createdReservation, setCreatedReservation] = useState<Reservation | null>(null);
+
+  // Real-time WebSocket connection to the currently selected facility
+  const { latestMessage } = useWebSocket('*', selectedFacilityId || undefined);
+
+  // Handle incoming real-time telemetry to detect slot conflicts before submission
+  useEffect(() => {
+    if (!latestMessage) return;
+
+    if (latestMessage.event === 'slot_status_changed' && latestMessage.slot_id) {
+      const slotId = latestMessage.slot_id;
+      const newStatus = latestMessage.new_status as ParkingSlotStatus;
+
+      setSlots((prev) =>
+        prev.map((s) => (s.id === slotId ? { ...s, status: newStatus } : s))
+      );
+
+      // If the slot currently targeted by the user was just taken
+      if (selectedSlotId === slotId && newStatus !== 'available') {
+        setSelectedSlotId(null);
+        setSlot(null);
+        const warning = `Bay #${latestMessage.slot_number} was just occupied or reserved by another vehicle. Please choose another bay.`;
+        setErrorMessage(warning);
+        toastError(warning, 'Slot No Longer Available');
+      }
+    }
+  }, [latestMessage, selectedSlotId, toastError]);
 
   // 1. Initial Load: Facilities and Slot Info
   useEffect(() => {
@@ -207,6 +234,11 @@ export const CreateReservation: React.FC = () => {
         setErrorMessage(
           detail || 'This slot is already reserved for this time window. Please pick another slot or adjust the hours.'
         );
+        setSelectedSlotId(null);
+        setSlot(null);
+        if (selectedZoneId) {
+          parkingApi.getSlots(selectedZoneId).then(setSlots).catch(() => {});
+        }
       } else if (status === 400) {
         setErrorMessage(detail || 'Invalid reservation request. Check the time parameters.');
       } else {

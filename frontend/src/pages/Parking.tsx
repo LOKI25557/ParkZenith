@@ -4,6 +4,7 @@ import type { Facility, Availability } from '../types';
 import { ParkingFilters } from '../components/parking/ParkingFilters';
 import { ParkingList } from '../components/parking/ParkingList';
 import { Breadcrumb } from '../components/ui/Breadcrumb';
+import { LiveDataTimestamp } from '../components/parking/LiveDataTimestamp';
 import { RefreshCw } from 'lucide-react';
 
 export const Parking: React.FC = () => {
@@ -17,6 +18,7 @@ export const Parking: React.FC = () => {
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(new Date());
 
   const loadData = useCallback(async () => {
     try {
@@ -45,6 +47,7 @@ export const Parking: React.FC = () => {
       setError(msg);
     } finally {
       setIsLoading(false);
+      setLastFetchedAt(new Date());
     }
   }, []);
 
@@ -158,27 +161,30 @@ export const Parking: React.FC = () => {
             </p>
           </div>
 
-          <button
-            onClick={() => loadData()}
-            disabled={isLoading}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '8px 14px',
-              borderRadius: '10px',
-              fontSize: '0.8125rem',
-              fontWeight: 500,
-              backgroundColor: 'rgba(255, 255, 255, 0.04)',
-              border: '1px solid var(--pz-border-subtle)',
-              color: 'var(--pz-text-secondary)',
-              cursor: isLoading ? 'not-allowed' : 'pointer',
-              transition: 'all 0.2s',
-            }}
-          >
-            <RefreshCw size={14} className={isLoading ? 'spin-animation' : ''} />
-            Refresh Telemetry
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <LiveDataTimestamp timestamp={lastFetchedAt} prefix="Synced" onRefresh={loadData} />
+            <button
+              onClick={() => loadData()}
+              disabled={isLoading}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 14px',
+                borderRadius: '10px',
+                fontSize: '0.8125rem',
+                fontWeight: 500,
+                backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid var(--pz-border-subtle)',
+                color: 'var(--pz-text-secondary)',
+                cursor: isLoading ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s',
+              }}
+            >
+              <RefreshCw size={14} className={isLoading ? 'spin-animation' : ''} />
+              Refresh Telemetry
+            </button>
+          </div>
         </div>
       </div>
 
