@@ -210,7 +210,7 @@ const Dashboard: React.FC = () => {
           <p style={{ fontSize: '0.9375rem', color: 'var(--pz-text-secondary)', marginTop: '4px' }}>
             Registered Vehicle:{' '}
             <strong style={{ color: '#FFFFFF', fontFamily: 'var(--font-mono)' }}>
-              {user?.vehicle_number || 'KA-01-MJ-5555'}
+              {user?.vehicle_number || 'None registered'}
             </strong>{' '}
             • ALPR Fast-Pass Active
           </p>

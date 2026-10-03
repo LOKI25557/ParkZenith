@@ -31,11 +31,37 @@ const Register: React.FC = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  const extractRegisterError = (err: any): string => {
+    if (err.response?.status === 409) {
+      return 'This email address is already registered. Please sign in or use a different email.';
+    }
+    if (err.response?.data?.detail) {
+      if (typeof err.response.data.detail === 'string') {
+        return err.response.data.detail;
+      }
+      if (Array.isArray(err.response.data.detail) && err.response.data.detail.length > 0) {
+        const firstErr = err.response.data.detail[0];
+        return firstErr?.msg ? String(firstErr.msg) : 'Please check your input details.';
+      }
+    }
+    if (err.message === 'Network Error' || !err.response) {
+      return 'Unable to connect to the registration server. Please check your network connection.';
+    }
+    return 'Registration failed. Please check your details and try again.';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.email || !formData.password) {
+    const trimmedEmail = formData.email.trim();
+    if (!trimmedEmail || !formData.password) {
       setError('Email and password are required.');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      setError('Please provide a valid email address.');
       return;
     }
 
@@ -54,19 +80,19 @@ const Register: React.FC = () => {
 
     try {
       await authApi.register({
-        email: formData.email,
+        email: trimmedEmail,
         password: formData.password,
-        full_name: formData.fullName || undefined,
-        phone: formData.phone || undefined,
-        vehicle_number: formData.vehicleNumber || undefined,
+        full_name: formData.fullName.trim() || undefined,
+        phone: formData.phone.trim() || undefined,
+        vehicle_number: formData.vehicleNumber.trim().toUpperCase() || undefined,
       });
 
       // Automatically sign in upon registration
-      await login(formData.email, formData.password);
+      await login(trimmedEmail, formData.password);
       success('Account created successfully! Welcome to ParkZenith.', 'Registration Complete');
       navigate('/dashboard');
     } catch (err: any) {
-      const msg = err.response?.data?.detail || 'Registration failed. The email may already be registered.';
+      const msg = extractRegisterError(err);
       setError(msg);
       toastError(msg, 'Registration Error');
     } finally {

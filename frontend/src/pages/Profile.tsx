@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../components/ui/Toast';
+import { authApi } from '../api/auth';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { FormField } from '../components/ui/FormField';
@@ -10,21 +11,39 @@ import { Avatar } from '../components/ui/Avatar';
 import { User, Mail, Phone, Car, ShieldCheck, Zap, LogOut, CheckCircle2 } from 'lucide-react';
 
 const Profile: React.FC = () => {
-  const { user, logout } = useAuth();
-  const { success } = useToast();
+  const { user, logout, refreshUser } = useAuth();
+  const { success, error: toastError } = useToast();
 
   const [fullName, setFullName] = useState(user?.full_name || '');
-  const [phone, setPhone] = useState(user?.phone || '+1 (555) 234-5678');
-  const [vehicleNumber, setVehicleNumber] = useState(user?.vehicle_number || 'KA-01-MJ-5555');
+  const [phone, setPhone] = useState(user?.phone || '');
+  const [vehicleNumber, setVehicleNumber] = useState(user?.vehicle_number || '');
   const [isSaving, setIsSaving] = useState(false);
 
-  const handleSave = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (user) {
+      setFullName(user.full_name || '');
+      setPhone(user.phone || '');
+      setVehicleNumber(user.vehicle_number || '');
+    }
+  }, [user]);
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
-    setTimeout(() => {
+    try {
+      await authApi.updateProfile({
+        full_name: fullName.trim() || undefined,
+        phone: phone.trim() || undefined,
+        vehicle_number: vehicleNumber.trim().toUpperCase() || undefined,
+      });
+      await refreshUser();
+      success('Driver profile and preferences successfully updated.', 'Profile Saved');
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || 'Failed to update profile. Please try again.';
+      toastError(msg, 'Update Error');
+    } finally {
       setIsSaving(false);
-      success('Profile preferences updated.', 'Saved');
-    }, 600);
+    }
   };
 
   const isAdmin = Boolean(user?.is_superuser || user?.role === 'admin');
@@ -104,7 +123,7 @@ const Profile: React.FC = () => {
           <div style={{ padding: '12px', backgroundColor: 'rgba(255, 255, 255, 0.03)', borderRadius: '12px', border: '1px solid var(--pz-border-subtle)' }}>
             <span style={{ fontSize: '0.75rem', color: 'var(--pz-text-muted)', display: 'block' }}>Primary License Plate</span>
             <span style={{ fontSize: '1.375rem', fontWeight: 800, color: '#FFFFFF', fontFamily: 'var(--font-mono)', marginTop: '2px', display: 'block' }}>
-              {vehicleNumber}
+              {vehicleNumber || 'Not registered'}
             </span>
           </div>
 

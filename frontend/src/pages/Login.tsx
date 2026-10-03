@@ -22,6 +22,21 @@ const Login: React.FC = () => {
 
   const from = (location.state as any)?.from?.pathname || '/dashboard';
 
+  const extractErrorMessage = (err: any): string => {
+    if (err.response?.data?.detail) {
+      if (typeof err.response.data.detail === 'string') {
+        return err.response.data.detail;
+      }
+      if (Array.isArray(err.response.data.detail) && err.response.data.detail.length > 0) {
+        return err.response.data.detail[0]?.msg || 'Validation failed';
+      }
+    }
+    if (err.message === 'Network Error' || !err.response) {
+      return 'Unable to connect to the authentication server. Please check your connection.';
+    }
+    return 'Invalid email or password. Please try again.';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
@@ -33,11 +48,11 @@ const Login: React.FC = () => {
     setIsLoading(true);
 
     try {
-      await login(email, password);
+      await login(email.trim(), password);
       success('Welcome back to ParkZenith!', 'Authenticated');
       navigate(from, { replace: true });
     } catch (err: any) {
-      const msg = err.response?.data?.detail || 'Invalid email or password. Please try again.';
+      const msg = extractErrorMessage(err);
       setError(msg);
       toastError(msg, 'Authentication Failed');
     } finally {

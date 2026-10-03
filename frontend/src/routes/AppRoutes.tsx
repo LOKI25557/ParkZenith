@@ -1,5 +1,8 @@
-import { Routes, Route } from 'react-router-dom';
+import React from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { ProtectedRoute } from './ProtectedRoute';
+import { useAuth } from '../hooks/useAuth';
+import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 
 // Pages
 import Home from '../pages/Home';
@@ -16,15 +19,57 @@ import Predictions from '../pages/Predictions';
 import Profile from '../pages/Profile';
 import Admin from '../pages/Admin';
 
-export const AppRoutes = () => {
+const PublicAuthRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'var(--pz-bg)',
+        }}
+      >
+        <LoadingSpinner size="lg" label="Loading..." />
+      </div>
+    );
+  }
+
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <>{children}</>;
+};
+
+export const AppRoutes: React.FC = () => {
   return (
     <Routes>
-      {/* Public Routes */}
+      {/* Public Landing Route */}
       <Route path="/" element={<Home />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
 
-      {/* Protected Routes */}
+      {/* Public Authentication Routes (redirect to dashboard if already logged in) */}
+      <Route
+        path="/login"
+        element={
+          <PublicAuthRoute>
+            <Login />
+          </PublicAuthRoute>
+        }
+      />
+      <Route
+        path="/register"
+        element={
+          <PublicAuthRoute>
+            <Register />
+          </PublicAuthRoute>
+        }
+      />
+
+      {/* Protected User Routes */}
       <Route element={<ProtectedRoute />}>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/parking" element={<Parking />} />
@@ -35,10 +80,15 @@ export const AppRoutes = () => {
         <Route path="/payments" element={<Payments />} />
         <Route path="/predictions" element={<Predictions />} />
         <Route path="/profile" element={<Profile />} />
-        
-        {/* Admin routes would typically have their own role-based guard */}
+      </Route>
+
+      {/* Protected Admin Routes (Requires is_superuser) */}
+      <Route element={<ProtectedRoute requireAdmin />}>
         <Route path="/admin/*" element={<Admin />} />
       </Route>
+
+      {/* Fallback to Home */}
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 };

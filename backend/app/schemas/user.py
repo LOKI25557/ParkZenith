@@ -38,6 +38,7 @@ class UserResponse(BaseModel):
     phone: Optional[str] = None
     vehicle_number: Optional[str] = None
     is_active: bool
+    is_superuser: bool = False
     created_at: datetime
 
 

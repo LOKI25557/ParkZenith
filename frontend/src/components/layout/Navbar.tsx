@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Radio, Menu, X, ArrowRight } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { Avatar } from '../ui/Avatar';
 import { useAuth } from '../../hooks/useAuth';
 
 export const Navbar: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { isAuthenticated, logout } = useAuth();
+  const { isAuthenticated, user, logout } = useAuth();
   const navigate = useNavigate();
 
   return (
@@ -137,6 +138,26 @@ export const Navbar: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           {isAuthenticated ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <Link
+                to="/profile"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '4px 10px',
+                  borderRadius: '8px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid var(--pz-border-subtle)',
+                  color: '#FFFFFF',
+                  fontSize: '0.8125rem',
+                  textDecoration: 'none',
+                }}
+              >
+                <Avatar name={user?.full_name || user?.email || 'User'} size="sm" />
+                <span style={{ maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || 'Profile'}
+                </span>
+              </Link>
               <Button
                 variant="primary"
                 size="sm"
@@ -220,29 +241,68 @@ export const Navbar: React.FC = () => {
           >
             How It Works
           </a>
-          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
-            <Button
-              variant="outline"
-              size="sm"
-              style={{ flex: 1 }}
-              onClick={() => {
-                setMobileMenuOpen(false);
-                navigate('/login');
-              }}
-            >
-              Sign In
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              style={{ flex: 1 }}
-              onClick={() => {
-                setMobileMenuOpen(false);
-                navigate('/register');
-              }}
-            >
-              Launch App
-            </Button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
+            {isAuthenticated ? (
+              <>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    navigate('/dashboard');
+                  }}
+                  rightIcon={<ArrowRight size={14} />}
+                >
+                  Dashboard
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    navigate('/profile');
+                  }}
+                >
+                  Profile ({user?.email})
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    logout();
+                  }}
+                  style={{ color: 'var(--pz-error)' }}
+                >
+                  Sign Out
+                </Button>
+              </>
+            ) : (
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  style={{ flex: 1 }}
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    navigate('/login');
+                  }}
+                >
+                  Sign In
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  style={{ flex: 1 }}
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    navigate('/register');
+                  }}
+                >
+                  Launch App
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -15,6 +15,25 @@ export interface Token {
   token_type: string;
 }
 
+export interface UserLoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface UserRegisterRequest {
+  email: string;
+  password: string;
+  full_name?: string;
+  phone?: string;
+  vehicle_number?: string;
+}
+
+export interface UserUpdateRequest {
+  full_name?: string;
+  phone?: string;
+  vehicle_number?: string;
+}
+
 export type ParkingSlotStatus = "available" | "occupied" | "reserved" | "maintenance";
 
 export type VehicleType = "car" | "motorcycle" | "bicycle" | "truck" | "other";
