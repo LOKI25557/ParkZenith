@@ -1,20 +1,36 @@
 import { apiClient } from './client';
-import type { Reservation } from '../types';
+import type { Reservation, ReservationCreateRequest } from '../types';
 
 export const reservationsApi = {
   getReservations: async (): Promise<Reservation[]> => {
-    const response = await apiClient.get('/api/reservations/');
-    // Based on backend schema it might return { items: [...], total: ... }
-    return response.data.items || response.data;
+    const response = await apiClient.get('/reservations');
+    // Backend schema returns { items: [...], total: ... }
+    return response.data.items || response.data || [];
   },
 
-  createReservation: async (data: { slot_id: number, reservation_start: string, reservation_end: string }): Promise<Reservation> => {
-    const response = await apiClient.post<Reservation>('/api/reservations/', data);
+  getReservation: async (id: number): Promise<Reservation> => {
+    try {
+      const response = await apiClient.get<Reservation>(`/reservations/${id}`);
+      return response.data;
+    } catch {
+      // Fallback if backend only exposes list endpoint for user
+      const list = await reservationsApi.getReservations();
+      const found = list.find((r) => r.id === id);
+      if (!found) {
+        throw new Error(`Reservation #${id} not found`);
+      }
+      return found;
+    }
+  },
+
+  createReservation: async (data: ReservationCreateRequest): Promise<Reservation> => {
+    const response = await apiClient.post<Reservation>('/reservations', data);
     return response.data;
   },
 
   cancelReservation: async (id: number): Promise<Reservation> => {
-    const response = await apiClient.delete<Reservation>(`/api/reservations/${id}`);
+    const response = await apiClient.delete<Reservation>(`/reservations/${id}`);
     return response.data;
-  }
+  },
 };
+

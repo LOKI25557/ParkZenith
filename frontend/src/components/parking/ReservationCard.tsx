@@ -3,7 +3,7 @@ import type { Reservation } from '../../types';
 import { Card } from '../ui/Card';
 import { StatusBadge } from '../ui/StatusBadge';
 import { Button } from '../ui/Button';
-import { Calendar, Clock, MapPin, XCircle, QrCode } from 'lucide-react';
+import { Calendar, Clock, MapPin, XCircle, QrCode, PlayCircle } from 'lucide-react';
 
 export interface ReservationCardProps {
   reservation: Reservation;
@@ -11,6 +11,7 @@ export interface ReservationCardProps {
   slotNumber?: string;
   onCancel?: (id: number) => void;
   onViewPass?: (reservation: Reservation) => void;
+  onCheckIn?: (reservation: Reservation) => void;
 }
 
 export const ReservationCard: React.FC<ReservationCardProps> = ({
@@ -19,6 +20,7 @@ export const ReservationCard: React.FC<ReservationCardProps> = ({
   slotNumber,
   onCancel,
   onViewPass,
+  onCheckIn,
 }) => {
   const startDate = new Date(reservation.reservation_start);
   const endDate = new Date(reservation.reservation_end);
@@ -75,6 +77,16 @@ export const ReservationCard: React.FC<ReservationCardProps> = ({
           marginTop: '0.25rem',
         }}
       >
+        {onCheckIn && (reservation.status === 'confirmed' || reservation.status === 'active') && (
+          <Button
+            variant="primary"
+            size="sm"
+            leftIcon={<PlayCircle size={14} />}
+            onClick={() => onCheckIn(reservation)}
+          >
+            Check In
+          </Button>
+        )}
         {onViewPass && (
           <Button
             variant="outline"

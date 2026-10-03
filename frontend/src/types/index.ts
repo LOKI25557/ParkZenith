@@ -105,7 +105,13 @@ export interface UnifiedFacilityIntelligence {
   reasoning: string[];
 }
 
-export type ReservationStatus = "pending" | "confirmed" | "cancelled" | "completed";
+export type ReservationStatus = "pending" | "confirmed" | "active" | "completed" | "cancelled" | "expired";
+
+export interface ReservationCreateRequest {
+  slot_id: number;
+  reservation_start: string;
+  reservation_end: string;
+}
 
 export interface Reservation {
   id: number;
@@ -116,7 +122,20 @@ export interface Reservation {
   status: ReservationStatus;
 }
 
-export type ParkingSessionStatus = "active" | "completed";
+export interface EnrichedReservation extends Reservation {
+  facilityName?: string;
+  facilityAddress?: string;
+  slotNumber?: string;
+  zoneName?: string;
+  vehicleType?: VehicleType;
+}
+
+export type ParkingSessionStatus = "active" | "completed" | "cancelled";
+
+export interface SessionStartRequest {
+  slot_id: number;
+  reservation_id?: number;
+}
 
 export interface ParkingSession {
   id: number;
@@ -130,6 +149,14 @@ export interface ParkingSession {
   status: ParkingSessionStatus;
   created_at: string;
   updated_at: string;
+}
+
+export interface EnrichedSession extends ParkingSession {
+  facilityName?: string;
+  facilityAddress?: string;
+  slotNumber?: string;
+  zoneName?: string;
+  vehicleType?: VehicleType;
 }
 
 export type PaymentMethod = "credit_card" | "debit_card" | "wallet" | "cash";

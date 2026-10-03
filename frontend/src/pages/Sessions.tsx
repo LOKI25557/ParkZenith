@@ -1,62 +1,169 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { sessionsApi } from '../api/sessions';
+import { parkingApi } from '../api/parking';
+import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../components/ui/Toast';
-import type { ParkingSession } from '../types';
+import type { ParkingSession, Slot, Facility } from '../types';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { Breadcrumb } from '../components/ui/Breadcrumb';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { EmptyState } from '../components/ui/EmptyState';
-import { Car, StopCircle, Receipt } from 'lucide-react';
+import { ConfirmationDialog } from '../components/ui/ConfirmationDialog';
+import { Modal } from '../components/ui/Modal';
+import {
+  Car,
+  StopCircle,
+  Receipt,
+  CheckCircle2,
+  ShieldCheck,
+  Download,
+  Plus,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const Sessions: React.FC = () => {
   const [sessions, setSessions] = useState<ParkingSession[]>([]);
   const [activeSession, setActiveSession] = useState<ParkingSession | null>(null);
-  const [elapsedMinutes, setElapsedMinutes] = useState(42);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isEnding, setIsEnding] = useState(false);
+  const [activeSlot, setActiveSlot] = useState<Slot | null>(null);
+  const [activeFacility, setActiveFacility] = useState<Facility | null>(null);
+
+  const [slotsMap, setSlotsMap] = useState<Record<number, Slot>>({});
+  const [facilitiesMap, setFacilitiesMap] = useState<Record<number, Facility>>({});
+
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isEnding, setIsEnding] = useState<boolean>(false);
+  const [isEndDialogOpen, setIsEndDialogOpen] = useState<boolean>(false);
+
+  // Completed session summary for modal receipt
+  const [completedSessionSummary, setCompletedSessionSummary] = useState<ParkingSession | null>(null);
+
+  // Live timer tick
+  const [currentTime, setCurrentTime] = useState<number>(() => Date.now());
 
   const { success, error: toastError } = useToast();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
-  const loadSessions = async () => {
+  const loadData = async () => {
     try {
       setIsLoading(true);
-      const data = await sessionsApi.getSessions();
-      const list = Array.isArray(data) ? data : [];
+      const [history, active] = await Promise.all([
+        sessionsApi.getSessions(),
+        sessionsApi.getActiveSession().catch(() => null),
+      ]);
+
+      const list = Array.isArray(history) ? history : [];
       setSessions(list);
-      const ongoing = list.find((s) => s.status === 'active');
-      setActiveSession(ongoing || null);
+
+      const current = active || list.find((s) => s.status === 'active') || null;
+      setActiveSession(current);
+
+      // Load facilities
+      try {
+        const facList = await parkingApi.getFacilities();
+        const fMap: Record<number, Facility> = {};
+        facList.forEach((f) => {
+          fMap[f.id] = f;
+        });
+        setFacilitiesMap(fMap);
+
+        // Load slots for all sessions
+        const sMap: Record<number, Slot> = {};
+        await Promise.all(
+          list.map(async (sess) => {
+            try {
+              if (!sMap[sess.slot_id]) {
+                const s = await parkingApi.getSlot(sess.slot_id);
+                sMap[sess.slot_id] = s;
+              }
+            } catch {
+              // ignore slot resolution error
+            }
+          })
+        );
+        setSlotsMap(sMap);
+
+        if (current) {
+          const s = sMap[current.slot_id] || (await parkingApi.getSlot(current.slot_id).catch(() => null));
+          if (s) {
+            setActiveSlot(s);
+            const z = await parkingApi.getZone(s.zone_id).catch(() => null);
+            if (z && fMap[z.facility_id]) {
+              setActiveFacility(fMap[z.facility_id]);
+            }
+          }
+        }
+      } catch {
+        // ignore enrichment error
+      }
     } catch (err) {
-      console.error('Failed to load sessions:', err);
+      console.error('Failed to load session data:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    loadSessions();
+    loadData();
   }, []);
 
-  // Duration timer ticker for active session
+  // Update timer every second for live session
   useEffect(() => {
-    const timer = setInterval(() => {
-      setElapsedMinutes((prev) => prev + 1);
-    }, 60000);
-    return () => clearInterval(timer);
-  }, []);
+    if (!activeSession) return;
+    const interval = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [activeSession]);
+
+  // Compute live duration and estimated fee
+  const { formattedDuration, estimatedFee } = useMemo(() => {
+    if (!activeSession) {
+      return { elapsedSeconds: 0, formattedDuration: '0m 0s', estimatedFee: 2.0 };
+    }
+
+    const checkIn = new Date(activeSession.check_in_time).getTime();
+    const diffSec = Math.max(0, Math.floor((currentTime - checkIn) / 1000));
+
+    const hours = Math.floor(diffSec / 3600);
+    const minutes = Math.floor((diffSec % 3600) / 60);
+    const seconds = diffSec % 60;
+
+    let durationStr = '';
+    if (hours > 0) {
+      durationStr = `${hours}h ${minutes}m ${seconds}s`;
+    } else {
+      durationStr = `${minutes}m ${seconds}s`;
+    }
+
+    // Backend PaymentService formula:
+    // hours = durationMinutes / 60
+    // fee = max(2.00, hours * 5.00)
+    const durationMinutes = Math.max(1, Math.ceil(diffSec / 60));
+    const fee = Math.max(2.0, (durationMinutes / 60.0) * 5.0);
+
+    return {
+      elapsedSeconds: diffSec,
+      formattedDuration: durationStr,
+      estimatedFee: fee,
+    };
+  }, [activeSession, currentTime]);
 
   const handleEndSession = async () => {
     if (!activeSession) return;
     setIsEnding(true);
     try {
-      await sessionsApi.endSession(activeSession.id);
-      success('Parking session ended. Proceeding to payment ledger.', 'Session Completed');
+      const completed = await sessionsApi.endSession(activeSession.id);
+      success(
+        `Session #${completed.id} completed. Total fee: $${completed.fee_amount?.toFixed(2)}.`,
+        'Session Completed'
+      );
       setActiveSession(null);
-      loadSessions();
-      navigate('/payments');
+      setIsEndDialogOpen(false);
+      setCompletedSessionSummary(completed);
+      loadData();
     } catch (err: any) {
       const msg = err.response?.data?.detail || 'Could not end session. Please retry.';
       toastError(msg, 'Session Error');
@@ -69,10 +176,22 @@ const Sessions: React.FC = () => {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       <div>
         <Breadcrumb items={[{ label: 'Parking Sessions' }]} />
-        <h1 className="text-page-title" style={{ marginTop: '0.75rem' }}>Parking Sessions</h1>
-        <p className="text-body" style={{ marginTop: '4px' }}>
-          Live session telemetry, duration monitoring, and billing settlement.
-        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', gap: '1rem', marginTop: '0.75rem' }}>
+          <div>
+            <h1 className="text-page-title">Parking Sessions</h1>
+            <p className="text-body" style={{ marginTop: '4px' }}>
+              Live session telemetry, duration monitoring, and billing settlement.
+            </p>
+          </div>
+
+          <Button
+            variant="outline"
+            leftIcon={<Plus size={16} />}
+            onClick={() => navigate('/parking')}
+          >
+            Find Parking Bay
+          </Button>
+        </div>
       </div>
 
       {/* Prominent Active Session Card */}
@@ -96,27 +215,27 @@ const Sessions: React.FC = () => {
               </div>
 
               <h2 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#FFFFFF' }}>
-                Slot #{activeSession.slot_id} • Metropolis Central
+                {activeSlot?.slot_number ? `Bay ${activeSlot.slot_number}` : `Slot #${activeSession.slot_id}`} • {activeFacility?.name || 'Metropolis Smart Parking'}
               </h2>
 
               <p style={{ fontSize: '0.875rem', color: 'var(--pz-text-secondary)', marginTop: '4px' }}>
-                Ingress check-in: {new Date(activeSession.check_in_time).toLocaleTimeString()} • ALPR Confirmed
+                Ingress check-in: {new Date(activeSession.check_in_time).toLocaleTimeString()} • ALPR Express Active
               </p>
             </div>
 
             {/* Live Accrued Fee & Timer */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2rem' }}>
               <div style={{ textAlign: 'right' }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--pz-text-muted)', display: 'block' }}>Duration</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--pz-text-muted)', display: 'block' }}>Live Duration</span>
                 <span style={{ fontSize: '1.75rem', fontWeight: 800, color: '#FFFFFF', fontFamily: 'var(--font-mono)' }}>
-                  {elapsedMinutes}m
+                  {formattedDuration}
                 </span>
               </div>
 
               <div style={{ textAlign: 'right' }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--pz-text-muted)', display: 'block' }}>Accrued Fee</span>
                 <span style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--pz-secondary)', fontFamily: 'var(--font-mono)' }}>
-                  ${(3.50 * (elapsedMinutes / 60)).toFixed(2)}
+                  ${estimatedFee.toFixed(2)}
                 </span>
               </div>
 
@@ -124,10 +243,10 @@ const Sessions: React.FC = () => {
                 variant="danger"
                 size="md"
                 leftIcon={<StopCircle size={16} />}
-                onClick={handleEndSession}
+                onClick={() => setIsEndDialogOpen(true)}
                 isLoading={isEnding}
               >
-                End Session &amp; Pay
+                End Session &amp; Check Out
               </Button>
             </div>
           </div>
@@ -157,59 +276,227 @@ const Sessions: React.FC = () => {
                     <th style={{ padding: '14px 18px', color: 'var(--pz-text-muted)', fontWeight: 600 }}>SESSION ID</th>
                     <th style={{ padding: '14px 18px', color: 'var(--pz-text-muted)', fontWeight: 600 }}>FACILITY &amp; BAY</th>
                     <th style={{ padding: '14px 18px', color: 'var(--pz-text-muted)', fontWeight: 600 }}>CHECK-IN</th>
+                    <th style={{ padding: '14px 18px', color: 'var(--pz-text-muted)', fontWeight: 600 }}>CHECK-OUT</th>
                     <th style={{ padding: '14px 18px', color: 'var(--pz-text-muted)', fontWeight: 600 }}>DURATION</th>
                     <th style={{ padding: '14px 18px', color: 'var(--pz-text-muted)', fontWeight: 600 }}>FEE</th>
                     <th style={{ padding: '14px 18px', color: 'var(--pz-text-muted)', fontWeight: 600 }}>STATUS</th>
-                    <th style={{ padding: '14px 18px', color: 'var(--pz-text-muted)', fontWeight: 600 }}>ACTION</th>
+                    <th style={{ padding: '14px 18px', color: 'var(--pz-text-muted)', fontWeight: 600 }}>RECEIPT</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sessions.map((sess) => (
-                    <tr
-                      key={sess.id}
-                      style={{
-                        borderBottom: '1px solid var(--pz-border-subtle)',
-                        transition: 'background-color 0.15s',
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.02)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                    >
-                      <td style={{ padding: '14px 18px', fontFamily: 'var(--font-mono)', color: 'var(--pz-secondary)' }}>
-                        #PS-{sess.id}
-                      </td>
-                      <td style={{ padding: '14px 18px', color: '#FFFFFF', fontWeight: 500 }}>
-                        Slot #{sess.slot_id} • Metropolis Hub
-                      </td>
-                      <td style={{ padding: '14px 18px', color: 'var(--pz-text-secondary)' }}>
-                        {new Date(sess.check_in_time).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
-                      </td>
-                      <td style={{ padding: '14px 18px', color: 'var(--pz-text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                        {sess.duration_minutes ? `${sess.duration_minutes}m` : 'Ongoing'}
-                      </td>
-                      <td style={{ padding: '14px 18px', fontWeight: 600, color: '#FFFFFF', fontFamily: 'var(--font-mono)' }}>
-                        ${sess.fee_amount ? sess.fee_amount.toFixed(2) : '3.50'}
-                      </td>
-                      <td style={{ padding: '14px 18px' }}>
-                        <StatusBadge status={sess.status} type="reservation" size="sm" />
-                      </td>
-                      <td style={{ padding: '14px 18px' }}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          leftIcon={<Receipt size={14} />}
-                          onClick={() => navigate('/payments')}
-                        >
-                          Receipt
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
+                  {sessions.map((sess) => {
+                    const slot = slotsMap[sess.slot_id];
+                    const slotNumber = slot?.slot_number ? `Bay ${slot.slot_number}` : `Slot #${sess.slot_id}`;
+                    const facilityName = facilitiesMap[1]?.name || 'Smart Parking Hub';
+
+                    return (
+                      <tr
+                        key={sess.id}
+                        style={{
+                          borderBottom: '1px solid var(--pz-border-subtle)',
+                          transition: 'background-color 0.15s',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.02)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                      >
+                        <td style={{ padding: '14px 18px', fontFamily: 'var(--font-mono)', color: 'var(--pz-secondary)' }}>
+                          #PS-{sess.id}
+                        </td>
+                        <td style={{ padding: '14px 18px', color: '#FFFFFF', fontWeight: 500 }}>
+                          {slotNumber} • {facilityName}
+                        </td>
+                        <td style={{ padding: '14px 18px', color: 'var(--pz-text-secondary)' }}>
+                          {new Date(sess.check_in_time).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+                        </td>
+                        <td style={{ padding: '14px 18px', color: 'var(--pz-text-secondary)' }}>
+                          {sess.check_out_time
+                            ? new Date(sess.check_out_time).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
+                            : 'Ongoing'}
+                        </td>
+                        <td style={{ padding: '14px 18px', color: 'var(--pz-text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                          {sess.duration_minutes !== null && sess.duration_minutes !== undefined ? `${sess.duration_minutes}m` : 'Ongoing'}
+                        </td>
+                        <td style={{ padding: '14px 18px', fontWeight: 600, color: '#FFFFFF', fontFamily: 'var(--font-mono)' }}>
+                          ${sess.fee_amount !== null && sess.fee_amount !== undefined ? sess.fee_amount.toFixed(2) : '3.50'}
+                        </td>
+                        <td style={{ padding: '14px 18px' }}>
+                          <StatusBadge status={sess.status} type="reservation" size="sm" />
+                        </td>
+                        <td style={{ padding: '14px 18px' }}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            leftIcon={<Receipt size={14} />}
+                            onClick={() => setCompletedSessionSummary(sess)}
+                          >
+                            Receipt
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </Card>
         )}
       </div>
+
+      {/* Confirmation Dialog before Ending Session */}
+      <ConfirmationDialog
+        isOpen={isEndDialogOpen}
+        onClose={() => setIsEndDialogOpen(false)}
+        onConfirm={handleEndSession}
+        title="Check-Out &amp; End Session?"
+        message="Are you sure you want to end your parking session? The barrier gate will be opened and your parking ledger finalized."
+        confirmText="Yes, Check Out"
+        variant="danger"
+        isLoading={isEnding}
+      />
+
+      {/* Session Completed Receipt Modal */}
+      {completedSessionSummary && (
+        <Modal
+          isOpen={true}
+          onClose={() => setCompletedSessionSummary(null)}
+          title="Parking Session Receipt"
+          maxWidth="560px"
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '1.25rem' }}>
+            <div
+              style={{
+                width: '56px',
+                height: '56px',
+                borderRadius: '50%',
+                backgroundColor: 'rgba(0, 230, 153, 0.12)',
+                border: '2px solid var(--pz-success)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--pz-success)',
+              }}
+            >
+              <CheckCircle2 size={32} />
+            </div>
+
+            <div>
+              <span
+                style={{
+                  fontSize: '0.6875rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  color: 'var(--pz-secondary)',
+                  fontWeight: 700,
+                }}
+              >
+                PARKZENITH SETTLED STATEMENT
+              </span>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#FFFFFF', marginTop: '4px' }}>
+                Session Completed
+              </h3>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--pz-text-muted)' }}>
+                REF #PS-{completedSessionSummary.id} • Verified via ALPR Ingress/Egress
+              </p>
+            </div>
+
+            {/* Financial & Time Receipt Box */}
+            <div
+              style={{
+                width: '100%',
+                padding: '1.25rem',
+                backgroundColor: 'var(--pz-bg-alt)',
+                borderRadius: '14px',
+                border: '1px solid var(--pz-border)',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, 1fr)',
+                gap: '12px',
+                textAlign: 'left',
+                fontSize: '0.875rem',
+              }}
+            >
+              <div>
+                <span style={{ fontSize: '0.6875rem', color: 'var(--pz-text-muted)', display: 'block' }}>CHECK-IN TIME</span>
+                <span style={{ fontWeight: 600, color: '#FFFFFF' }}>
+                  {new Date(completedSessionSummary.check_in_time).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+                </span>
+              </div>
+
+              <div>
+                <span style={{ fontSize: '0.6875rem', color: 'var(--pz-text-muted)', display: 'block' }}>CHECK-OUT TIME</span>
+                <span style={{ fontWeight: 600, color: '#FFFFFF' }}>
+                  {completedSessionSummary.check_out_time
+                    ? new Date(completedSessionSummary.check_out_time).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
+                    : 'Just now'}
+                </span>
+              </div>
+
+              <div>
+                <span style={{ fontSize: '0.6875rem', color: 'var(--pz-text-muted)', display: 'block' }}>TOTAL DURATION</span>
+                <span style={{ fontWeight: 700, color: 'var(--pz-secondary)', fontFamily: 'var(--font-mono)' }}>
+                  {completedSessionSummary.duration_minutes !== null && completedSessionSummary.duration_minutes !== undefined
+                    ? `${completedSessionSummary.duration_minutes} mins`
+                    : '45 mins'}
+                </span>
+              </div>
+
+              <div>
+                <span style={{ fontSize: '0.6875rem', color: 'var(--pz-text-muted)', display: 'block' }}>TOTAL FEE SETTLED</span>
+                <span style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--pz-secondary)', fontFamily: 'var(--font-mono)' }}>
+                  ${completedSessionSummary.fee_amount !== null && completedSessionSummary.fee_amount !== undefined
+                    ? completedSessionSummary.fee_amount.toFixed(2)
+                    : '5.00'}
+                </span>
+              </div>
+
+              <div>
+                <span style={{ fontSize: '0.6875rem', color: 'var(--pz-text-muted)', display: 'block' }}>PARKING BAY</span>
+                <span style={{ fontWeight: 600, color: '#FFFFFF' }}>
+                  {slotsMap[completedSessionSummary.slot_id]?.slot_number
+                    ? `Bay ${slotsMap[completedSessionSummary.slot_id].slot_number}`
+                    : `Slot #${completedSessionSummary.slot_id}`}
+                </span>
+              </div>
+
+              <div>
+                <span style={{ fontSize: '0.6875rem', color: 'var(--pz-text-muted)', display: 'block' }}>VEHICLE PLATE</span>
+                <span style={{ fontWeight: 600, color: '#FFFFFF', fontFamily: 'var(--font-mono)' }}>
+                  {user?.vehicle_number || 'REGISTERED'}
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8125rem', color: 'var(--pz-success)' }}>
+              <ShieldCheck size={16} />
+              <span>Ingress/Egress barrier gate cycle complete</span>
+            </div>
+
+            {/* Modal Actions */}
+            <div style={{ width: '100%', display: 'flex', gap: '10px', marginTop: '0.5rem' }}>
+              <Button
+                variant="outline"
+                size="md"
+                leftIcon={<Download size={14} />}
+                onClick={() => window.print()}
+                style={{ flex: 1 }}
+              >
+                Print Receipt
+              </Button>
+
+              <Button
+                variant="primary"
+                size="md"
+                onClick={() => {
+                  setCompletedSessionSummary(null);
+                  navigate('/parking');
+                }}
+                style={{ flex: 1 }}
+              >
+                Book Another Bay
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

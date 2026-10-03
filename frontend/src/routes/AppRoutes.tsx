@@ -12,6 +12,7 @@ import Dashboard from '../pages/Dashboard';
 import Parking from '../pages/Parking';
 import ParkingDetail from '../pages/ParkingDetail';
 import Reservations from '../pages/Reservations';
+import CreateReservation from '../pages/CreateReservation';
 import ReservationDetail from '../pages/ReservationDetail';
 import Sessions from '../pages/Sessions';
 import Payments from '../pages/Payments';
@@ -75,6 +76,7 @@ export const AppRoutes: React.FC = () => {
         <Route path="/parking" element={<Parking />} />
         <Route path="/parking/:id" element={<ParkingDetail />} />
         <Route path="/reservations" element={<Reservations />} />
+        <Route path="/reservations/new" element={<CreateReservation />} />
         <Route path="/reservations/:id" element={<ReservationDetail />} />
         <Route path="/sessions" element={<Sessions />} />
         <Route path="/payments" element={<Payments />} />
