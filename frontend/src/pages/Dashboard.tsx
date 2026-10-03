@@ -7,7 +7,7 @@ import { sessionsApi } from '../api/sessions';
 import { reservationsApi } from '../api/reservations';
 import { aiApi } from '../api/ai';
 import { useWebSocket } from '../hooks/useWebSocket';
-import type { Facility, Availability, ParkingSession, Reservation, Slot } from '../types';
+import type { Facility, Availability, ParkingSession, Reservation, Slot, ParkingSlotStatus } from '../types';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { SlotGrid } from '../components/parking/SlotGrid';
@@ -19,6 +19,8 @@ import {
   ArrowRight,
   Activity,
 } from 'lucide-react';
+
+import { ConnectionStatusBadge } from '../components/parking/ConnectionStatusBadge';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
@@ -36,7 +38,7 @@ const Dashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Real-time WebSocket hook subscribed to facility events
-  const { latestMessage } = useWebSocket('*', selectedFacility?.id);
+  const { latestMessage, connectionStatus, reconnect } = useWebSocket('*', selectedFacility?.id);
 
   const handleSelectFacility = async (fac: Facility) => {
     setSelectedFacility(fac);
@@ -156,25 +158,53 @@ const Dashboard: React.FC = () => {
     if (latestMessage.event === 'slot_status_changed' && latestMessage.slot_id) {
       setFacilitySlots((prev) =>
         prev.map((s) =>
-          s.id === latestMessage.slot_id ? { ...s, status: latestMessage.new_status } : s
+          s.id === latestMessage.slot_id ? { ...s, status: latestMessage.new_status as ParkingSlotStatus } : s
         )
       );
     }
 
     if (latestMessage.event === 'occupancy_updated' && latestMessage.data) {
+      const occ = latestMessage.data;
       setAvailability((prev) =>
         prev
           ? {
               ...prev,
-              available: latestMessage.data.available_slots,
-              occupied: latestMessage.data.occupied_slots,
-              reserved: latestMessage.data.reserved_slots,
-              occupancy_percentage: latestMessage.data.occupancy_percentage,
+              available: occ.available_slots,
+              occupied: occ.occupied_slots,
+              reserved: occ.reserved_slots,
+              occupancy_percentage: occ.occupancy_percentage,
+              total_slots: occ.total_slots ?? prev.total_slots,
             }
-          : null
+          : {
+              entity_id: selectedFacility?.id || 0,
+              total_slots: occ.total_slots || 0,
+              available: occ.available_slots,
+              occupied: occ.occupied_slots,
+              reserved: occ.reserved_slots,
+              occupancy_percentage: occ.occupancy_percentage,
+            }
       );
     }
-  }, [latestMessage]);
+
+    if (latestMessage.event === 'parking_snapshot' && latestMessage.data) {
+      const snap = latestMessage.data;
+      setAvailability({
+        entity_id: selectedFacility?.id || 0,
+        total_slots: snap.total_slots,
+        available: snap.available_slots,
+        occupied: snap.occupied_slots,
+        reserved: snap.reserved_slots,
+        occupancy_percentage: snap.occupancy_percentage,
+      });
+
+      if (snap.slots && Array.isArray(snap.slots)) {
+        const snapMap = new Map<number, ParkingSlotStatus>(snap.slots.map((s: any) => [s.id, s.status as ParkingSlotStatus]));
+        setFacilitySlots((prev) =>
+          prev.map((s) => (snapMap.has(s.id) ? { ...s, status: snapMap.get(s.id)! } : s))
+        );
+      }
+    }
+  }, [latestMessage, selectedFacility]);
 
   const handleEndSession = async () => {
     if (!activeSession) return;
@@ -410,6 +440,30 @@ const Dashboard: React.FC = () => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '1.5rem' }}>
         {/* Left Column (8 cols): Real-time Slot Visualizer */}
         <div style={{ gridColumn: 'span 8' }} className="dashboard-main-col">
+          {selectedFacility && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--pz-text-muted)' }}>
+                  Monitored Garage:
+                </span>
+                <span style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#FFFFFF' }}>
+                  {selectedFacility.name}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ConnectionStatusBadge status={connectionStatus} onReconnect={reconnect} showStaleNotice={false} />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  rightIcon={<ArrowRight size={14} />}
+                  onClick={() => navigate(`/parking/${selectedFacility.id}`)}
+                >
+                  Bay Details
+                </Button>
+              </div>
+            </div>
+          )}
+
           {selectedFacility && (
             <SlotGrid
               slots={facilitySlots}

@@ -1,5 +1,5 @@
 type MessageHandler = (data: any) => void;
-export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'reconnecting';
+export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'reconnecting' | 'unauthorized';
 type StatusListener = (status: ConnectionStatus) => void;
 
 export class WebSocketService {
@@ -10,13 +10,18 @@ export class WebSocketService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 2000;
-  private token: string | null;
+  private token: string | null = null;
   private currentFacilityId?: number;
   private _status: ConnectionStatus = 'disconnected';
+  private reconnectTimeoutId: any = null;
 
   constructor() {
     this.baseUrl = import.meta.env.VITE_WS_URL || 'ws://127.0.0.1:8000';
-    this.token = localStorage.getItem('parkzenith_token');
+    try {
+      this.token = localStorage.getItem('parkzenith_token');
+    } catch {
+      this.token = null;
+    }
   }
 
   public get status(): ConnectionStatus {
@@ -37,33 +42,48 @@ export class WebSocketService {
   }
 
   public connect(token?: string, facilityId?: number) {
-    if (token) {
+    if (token !== undefined) {
       this.token = token;
     } else {
-      this.token = localStorage.getItem('parkzenith_token');
+      try {
+        this.token = localStorage.getItem('parkzenith_token');
+      } catch {
+        this.token = null;
+      }
     }
 
     if (facilityId !== undefined) {
       this.currentFacilityId = facilityId;
     }
 
-    if (!this.token) {
+    // Clear any pending reconnect
+    if (this.reconnectTimeoutId) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = null;
+    }
+
+    if (!this.currentFacilityId) {
       this.setStatus('disconnected');
+      return;
+    }
+
+    if (!this.token) {
+      this.setStatus('unauthorized');
       return;
     }
 
     // Close any prior connection
     if (this.ws) {
+      this.ws.onclose = null;
+      this.ws.onerror = null;
       this.ws.close();
       this.ws = null;
     }
 
     this.setStatus('connecting');
 
-    // Connect to facility endpoint if facilityId provided, or general ws
-    const endpoint = this.currentFacilityId
-      ? `${this.baseUrl}/api/ws/parking/${this.currentFacilityId}?token=${this.token}`
-      : `${this.baseUrl}/api/ws?token=${this.token}`;
+    // Real backend WebSocket endpoint: /ws/parking/{facility_id}?token={token}
+    const endpoint = `${this.baseUrl}/ws/parking/${this.currentFacilityId}?token=${encodeURIComponent(this.token)}`;
 
     try {
       this.ws = new WebSocket(endpoint);
@@ -92,9 +112,13 @@ export class WebSocketService {
         }
       };
 
-      this.ws.onclose = () => {
-        this.setStatus('disconnected');
-        this.attemptReconnect();
+      this.ws.onclose = (ev) => {
+        if (ev.code === 1008) {
+          this.setStatus('unauthorized');
+        } else {
+          this.setStatus('disconnected');
+          this.attemptReconnect();
+        }
       };
 
       this.ws.onerror = () => {
@@ -105,19 +129,35 @@ export class WebSocketService {
     }
   }
 
+  public reconnect(token?: string, facilityId?: number) {
+    this.reconnectAttempts = 0;
+    this.connect(token, facilityId);
+  }
+
   public disconnect() {
+    if (this.reconnectTimeoutId) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = null;
+    }
     if (this.ws) {
+      this.ws.onclose = null;
+      this.ws.onerror = null;
       this.ws.close();
       this.ws = null;
     }
+    this.reconnectAttempts = 0;
     this.setStatus('disconnected');
   }
 
   private attemptReconnect() {
+    if (!this.token) {
+      this.setStatus('unauthorized');
+      return;
+    }
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
       this.setStatus('reconnecting');
-      setTimeout(() => {
+      this.reconnectTimeoutId = setTimeout(() => {
         this.connect();
       }, this.reconnectDelay * this.reconnectAttempts);
     }

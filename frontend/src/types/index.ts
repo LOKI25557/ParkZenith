@@ -157,3 +157,58 @@ export interface WebSocketMessage {
   type: string;
   data: any;
 }
+
+// Realtime Parking Telemetry Events
+export interface RealtimeSlotInfo {
+  id: number;
+  slot_number: string;
+  zone_id: number;
+  status: ParkingSlotStatus;
+}
+
+export interface RealtimeParkingSnapshotData {
+  total_slots: number;
+  available_slots: number;
+  occupied_slots: number;
+  reserved_slots: number;
+  occupancy_percentage: number;
+  slots: RealtimeSlotInfo[];
+}
+
+export interface ParkingSnapshotEvent {
+  event: "parking_snapshot";
+  facility_id: number;
+  timestamp: string;
+  data: RealtimeParkingSnapshotData;
+}
+
+export interface SlotStatusChangedEvent {
+  event: "slot_status_changed";
+  facility_id: number;
+  zone_id: number;
+  slot_id: number;
+  slot_number: string;
+  old_status: ParkingSlotStatus;
+  new_status: ParkingSlotStatus;
+  timestamp: string;
+}
+
+export interface RealtimeOccupancyData {
+  total_slots: number;
+  available_slots: number;
+  occupied_slots: number;
+  reserved_slots: number;
+  occupancy_percentage: number;
+}
+
+export interface OccupancyUpdatedEvent {
+  event: "occupancy_updated";
+  facility_id: number;
+  timestamp: string;
+  data: RealtimeOccupancyData;
+}
+
+export type RealtimeParkingEvent =
+  | ParkingSnapshotEvent
+  | SlotStatusChangedEvent
+  | OccupancyUpdatedEvent;

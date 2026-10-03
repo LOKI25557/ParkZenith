@@ -5,8 +5,11 @@ import { reservationsApi } from '../api/reservations';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../components/ui/Toast';
-import type { Facility, Zone, Slot, Availability } from '../types';
+import type { Facility, Zone, Slot, Availability, ParkingSlotStatus } from '../types';
 import { SlotGrid } from '../components/parking/SlotGrid';
+import { SlotDetailsPanel } from '../components/parking/SlotDetailsPanel';
+import { AvailabilityIndicator } from '../components/parking/AvailabilityIndicator';
+import { ConnectionStatusBadge } from '../components/parking/ConnectionStatusBadge';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
@@ -26,7 +29,6 @@ import {
   CheckCircle2,
   XCircle,
   Copy,
-  Calendar,
 } from 'lucide-react';
 
 export const ParkingDetail: React.FC = () => {
@@ -50,10 +52,10 @@ export const ParkingDetail: React.FC = () => {
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Facility-specific WebSocket connection
-  const { latestMessage } = useWebSocket('*', facilityId || undefined);
+  // Facility-specific WebSocket connection with connectionStatus and reconnect helper
+  const { latestMessage, connectionStatus, reconnect } = useWebSocket('*', facilityId || undefined);
 
-  // Load facility, zones, and availability
+  // Load facility, zones, and initial availability
   const loadFacilityData = useCallback(async () => {
     if (!facilityId || isNaN(facilityId)) {
       setError('Invalid facility ID specified.');
@@ -69,12 +71,11 @@ export const ParkingDetail: React.FC = () => {
       const fac = await parkingApi.getFacility(facilityId);
       setFacility(fac);
 
-      // Fetch availability
+      // Fetch facility-level availability
       try {
         const avail = await parkingApi.getFacilityAvailability(facilityId);
         setAvailability(avail);
       } catch {
-        // Availability might not be seeded yet
         setAvailability(null);
       }
 
@@ -125,32 +126,68 @@ export const ParkingDetail: React.FC = () => {
   useEffect(() => {
     if (!latestMessage) return;
 
+    // 1. Single slot status update event
     if (latestMessage.event === 'slot_status_changed' && latestMessage.slot_id) {
+      const slotId = latestMessage.slot_id;
+      const newStatus = latestMessage.new_status as ParkingSlotStatus;
+
       setSlots((prev) =>
-        prev.map((s) =>
-          s.id === latestMessage.slot_id ? { ...s, status: latestMessage.new_status } : s
-        )
+        prev.map((s) => (s.id === slotId ? { ...s, status: newStatus } : s))
       );
+
+      // If currently selected slot is changed to non-available by someone else, deselect it
+      setSelectedSlot((prev) => {
+        if (prev && prev.id === slotId && newStatus !== 'available') {
+          info(`Slot #${prev.slot_number} was just occupied or reserved.`, 'Bay Telemetry Updated');
+          return null;
+        }
+        return prev;
+      });
     }
 
+    // 2. Occupancy counters updated event
     if (latestMessage.event === 'occupancy_updated' && latestMessage.data) {
-      setAvailability((prev) =>
-        prev
-          ? {
-              ...prev,
-              available: latestMessage.data.available_slots,
-              occupied: latestMessage.data.occupied_slots,
-              reserved: latestMessage.data.reserved_slots,
-              occupancy_percentage: latestMessage.data.occupancy_percentage,
-            }
-          : null
-      );
+      const occData = latestMessage.data;
+      setAvailability((prev) => {
+        return {
+          entity_id: facilityId,
+          total_slots: occData.total_slots ?? prev?.total_slots ?? 0,
+          available: occData.available_slots,
+          occupied: occData.occupied_slots,
+          reserved: occData.reserved_slots,
+          occupancy_percentage: occData.occupancy_percentage,
+        };
+      });
     }
-  }, [latestMessage]);
 
+    // 3. Full parking snapshot event
+    if (latestMessage.event === 'parking_snapshot' && latestMessage.data) {
+      const snapData = latestMessage.data;
+      setAvailability({
+        entity_id: facilityId,
+        total_slots: snapData.total_slots,
+        available: snapData.available_slots,
+        occupied: snapData.occupied_slots,
+        reserved: snapData.reserved_slots,
+        occupancy_percentage: snapData.occupancy_percentage,
+      });
+
+      // Update statuses of existing slots for active zone
+      if (snapData.slots && Array.isArray(snapData.slots)) {
+        const snapMap = new Map<number, ParkingSlotStatus>(snapData.slots.map((s: any) => [s.id, s.status as ParkingSlotStatus]));
+        setSlots((prev) =>
+          prev.map((s) => (snapMap.has(s.id) ? { ...s, status: snapMap.get(s.id)! } : s))
+        );
+      }
+    }
+  }, [latestMessage, facilityId, info]);
+
+  // Handle deck / zone switching
   const handleZoneChange = async (zone: Zone) => {
     setSelectedZone(zone);
+    setSelectedSlot(null); // Reset selection on zone transition
     setSlotsLoading(true);
+
     try {
       const sList = await parkingApi.getSlots(zone.id);
       setSlots(sList);
@@ -164,14 +201,16 @@ export const ParkingDetail: React.FC = () => {
 
   const handleSlotSelect = (slot: Slot) => {
     if (slot.status !== 'available') return;
+    setSelectedSlot((prev) => (prev?.id === slot.id ? null : slot));
+  };
 
+  const handleInitiateReservation = (slotToReserve: Slot) => {
     if (!isAuthenticated) {
-      info('Please sign in to your ParkZenith account to complete a reservation.', 'Authentication Required');
+      info('Please sign in to complete a reservation.', 'Authentication Required');
       navigate(`/login?redirect=/parking/${facilityId}`);
       return;
     }
-
-    setSelectedSlot(slot);
+    setSelectedSlot(slotToReserve);
     setIsReserveModalOpen(true);
   };
 
@@ -195,21 +234,22 @@ export const ParkingDetail: React.FC = () => {
         reservation_end: end.toISOString(),
       });
 
-      success(`Slot ${selectedSlot.slot_number} reserved successfully!`, 'Reservation Confirmed');
+      success(`Slot #${selectedSlot.slot_number} reserved successfully!`, 'Reservation Confirmed');
       setIsReserveModalOpen(false);
 
       // Optimistically mark as reserved
       setSlots((prev) =>
         prev.map((s) => (s.id === selectedSlot.id ? { ...s, status: 'reserved' } : s))
       );
+      setSelectedSlot(null);
 
-      // Also refresh availability
+      // Refresh availability
       if (facilityId) {
         try {
           const updatedAvail = await parkingApi.getFacilityAvailability(facilityId);
           setAvailability(updatedAvail);
         } catch {
-          // Ignore
+          // ignore
         }
       }
 
@@ -269,17 +309,22 @@ export const ParkingDetail: React.FC = () => {
     ? `${facility.operating_start_time} - ${facility.operating_end_time}`
     : 'Open 24/7';
 
-  const totalSlotsCount = availability?.total_slots ?? facility.total_slots ?? 0;
-  const availableSlotsCount = availability?.available ?? slots.filter((s) => s.status === 'available').length;
-  const occupiedSlotsCount = availability?.occupied ?? slots.filter((s) => s.status === 'occupied').length;
-  const reservedSlotsCount = availability?.reserved ?? slots.filter((s) => s.status === 'reserved').length;
-  const occupancyPercentage = availability?.occupancy_percentage ?? (
-    totalSlotsCount > 0 ? Math.round((occupiedSlotsCount / totalSlotsCount) * 100) : 0
-  );
+  // Availability object fallback using real loaded slots if availability endpoint was empty
+  const activeAvailability: Availability = availability || {
+    entity_id: facility.id,
+    total_slots: facility.total_slots || slots.length,
+    available: slots.filter((s) => s.status === 'available').length,
+    occupied: slots.filter((s) => s.status === 'occupied').length,
+    reserved: slots.filter((s) => s.status === 'reserved').length,
+    occupancy_percentage:
+      slots.length > 0
+        ? Math.round((slots.filter((s) => s.status === 'occupied').length / slots.length) * 100)
+        : 0,
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      {/* Breadcrumb Navigation & Back Link */}
+      {/* Breadcrumb Navigation & Top Actions */}
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
         <Breadcrumb
           items={[
@@ -288,14 +333,22 @@ export const ParkingDetail: React.FC = () => {
           ]}
         />
 
-        <Button
-          variant="ghost"
-          size="sm"
-          leftIcon={<ArrowLeft size={14} />}
-          onClick={() => navigate('/parking')}
-        >
-          Back to Facilities
-        </Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <ConnectionStatusBadge
+            status={connectionStatus}
+            onReconnect={reconnect}
+            showStaleNotice={false}
+          />
+
+          <Button
+            variant="ghost"
+            size="sm"
+            leftIcon={<ArrowLeft size={14} />}
+            onClick={() => navigate('/parking')}
+          >
+            Back to Facilities
+          </Button>
+        </div>
       </div>
 
       {/* Facility Header Card */}
@@ -349,6 +402,7 @@ export const ParkingDetail: React.FC = () => {
                 type="button"
                 onClick={copyAddressToClipboard}
                 title="Copy address"
+                aria-label="Copy address"
                 style={{
                   background: 'transparent',
                   border: 'none',
@@ -364,71 +418,33 @@ export const ParkingDetail: React.FC = () => {
             </div>
           </div>
 
-          {/* Live Availability Telemetry Box */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-            <div
-              style={{
-                padding: '12px 20px',
-                borderRadius: '14px',
-                backgroundColor: 'rgba(16, 185, 129, 0.12)',
-                border: '1px solid rgba(16, 185, 129, 0.25)',
-                textAlign: 'center',
-                minWidth: '110px',
-              }}
-            >
-              <span style={{ fontSize: '1.75rem', fontWeight: 800, color: '#10B981', fontFamily: 'var(--font-mono)', display: 'block' }}>
-                {availableSlotsCount}
-              </span>
-              <span style={{ fontSize: '0.6875rem', color: 'var(--pz-success)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.04em' }}>
-                Open Bays
-              </span>
-            </div>
-
-            <div
-              style={{
-                padding: '12px 20px',
-                borderRadius: '14px',
-                backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                border: '1px solid var(--pz-border-subtle)',
-                textAlign: 'center',
-                minWidth: '110px',
-              }}
-            >
-              <span style={{ fontSize: '1.75rem', fontWeight: 800, color: '#FFFFFF', fontFamily: 'var(--font-mono)', display: 'block' }}>
-                {totalSlotsCount}
-              </span>
-              <span style={{ fontSize: '0.6875rem', color: 'var(--pz-text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.04em' }}>
-                Total Slots
-              </span>
-            </div>
+          {/* Operating hours & specs */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end', fontSize: '0.8125rem', color: 'var(--pz-text-secondary)' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <Clock size={14} color="var(--pz-secondary)" /> Hours: {operatingHours}
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <ShieldCheck size={14} color="var(--pz-success)" /> Telemetry Monitored
+            </span>
           </div>
         </div>
-
-        {/* Feature & Operating Info Row */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginTop: '1.5rem', borderTop: '1px solid var(--pz-border-subtle)', paddingTop: '1.25rem' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8125rem', color: 'var(--pz-text-secondary)' }}>
-            <Clock size={14} color="var(--pz-secondary)" /> Hours: {operatingHours}
-          </span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8125rem', color: 'var(--pz-text-secondary)' }}>
-            <ShieldCheck size={14} color="var(--pz-success)" /> Connected Telemetry
-          </span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8125rem', color: 'var(--pz-text-secondary)' }}>
-            <Calendar size={14} color="var(--pz-secondary)" /> Density: {occupancyPercentage}% Occupied
-          </span>
-          {reservedSlotsCount > 0 && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8125rem', color: 'var(--pz-warning)' }}>
-              • {reservedSlotsCount} Reserved
-            </span>
-          )}
-        </div>
       </Card>
+
+      {/* Live Availability Telemetry Summary */}
+      <AvailabilityIndicator
+        availability={activeAvailability}
+        facilityName={facility.name}
+        zoneName={selectedZone?.name}
+        connectionStatus={connectionStatus}
+        onReconnect={reconnect}
+      />
 
       {/* Zone Switcher */}
       {zones.length > 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Layers size={18} color="var(--pz-secondary)" />
-            <span style={{ fontSize: '0.875rem', color: 'var(--pz-text-secondary)', fontWeight: 500 }}>
+            <span style={{ fontSize: '0.875rem', color: 'var(--pz-text-secondary)', fontWeight: 600 }}>
               Select Deck / Zone:
             </span>
           </div>
@@ -439,6 +455,7 @@ export const ParkingDetail: React.FC = () => {
               return (
                 <button
                   key={z.id}
+                  type="button"
                   onClick={() => handleZoneChange(z)}
                   style={{
                     padding: '8px 16px',
@@ -451,9 +468,11 @@ export const ParkingDetail: React.FC = () => {
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
                   }}
+                  aria-pressed={isSelected}
                 >
                   {z.name}
-                  {z.total_slots ? ` (${z.total_slots} Slots)` : ''}
+                  {z.floor_number !== undefined ? ` (Fl. ${z.floor_number})` : ''}
+                  {z.total_slots ? ` • ${z.total_slots} Bays` : ''}
                 </button>
               );
             })}
@@ -470,8 +489,19 @@ export const ParkingDetail: React.FC = () => {
             fontSize: '0.875rem',
           }}
         >
-          No individual zones configured for this facility.
+          No individual deck zones configured for this facility.
         </div>
+      )}
+
+      {/* Selected Slot Details Panel */}
+      {selectedSlot && (
+        <SlotDetailsPanel
+          slot={selectedSlot}
+          zone={selectedZone}
+          facilityName={facility.name}
+          onClose={() => setSelectedSlot(null)}
+          onReserve={handleInitiateReservation}
+        />
       )}
 
       {/* Live Slot Grid Matrix */}
@@ -482,11 +512,11 @@ export const ParkingDetail: React.FC = () => {
       ) : slots.length === 0 ? (
         <EmptyState
           icon={<Layers size={28} />}
-          title="No Slots Configured"
+          title="No Bays Configured"
           description={
             selectedZone
-              ? `No parking slots are registered in "${selectedZone.name}" yet.`
-              : "No parking slots are currently mapped for this facility in the database."
+              ? `No parking bays are registered in "${selectedZone.name}" yet.`
+              : "No parking bays are currently mapped for this facility in the database."
           }
         />
       ) : (
@@ -503,7 +533,7 @@ export const ParkingDetail: React.FC = () => {
         isOpen={isReserveModalOpen}
         onClose={() => setIsReserveModalOpen(false)}
         title="Reserve Parking Bay"
-        description="Select your expected duration and confirm your reservation."
+        description="Select duration and confirm your reservation."
       >
         {selectedSlot && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>

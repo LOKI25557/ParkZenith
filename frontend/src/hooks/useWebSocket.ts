@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { wsService } from '../services/websocket';
 import type { ConnectionStatus } from '../services/websocket';
 import { useAuth } from './useAuth';
@@ -14,8 +14,12 @@ export const useWebSocket = (messageType: string = '*', facilityId?: number) => 
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated && token) {
-      wsService.connect(token, facilityId);
+    if (facilityId !== undefined) {
+      if (isAuthenticated && token) {
+        wsService.connect(token, facilityId);
+      } else {
+        wsService.disconnect();
+      }
     }
 
     return () => {
@@ -35,9 +39,21 @@ export const useWebSocket = (messageType: string = '*', facilityId?: number) => 
     };
   }, [messageType]);
 
-  const sendMessage = (message: any) => {
+  const sendMessage = useCallback((message: any) => {
     wsService.send(message);
-  };
+  }, []);
 
-  return { latestMessage, connectionStatus, sendMessage };
+  const reconnect = useCallback(() => {
+    if (facilityId && token) {
+      wsService.reconnect(token, facilityId);
+    }
+  }, [facilityId, token]);
+
+  return {
+    latestMessage,
+    connectionStatus,
+    isConnected: connectionStatus === 'connected',
+    sendMessage,
+    reconnect,
+  };
 };
